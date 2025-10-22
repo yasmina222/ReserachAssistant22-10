@@ -12,6 +12,7 @@ from datetime import datetime
 import json
 import logging
 from dotenv import load_dotenv
+import streamlit as st
 
 load_dotenv()
 
@@ -21,8 +22,8 @@ class PremiumAIEngine:
     """Premium research engine using Serper + GPT-4-turbo"""
     
     def __init__(self):
-        self.openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        self.serper_api_key = os.getenv("SERPER_API_KEY")
+        self.openai_client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY")))
+        self.serper_api_key = st.secrets.get("SERPER_API_KEY", os.getenv("SERPER_API_KEY"))
         self.model = "gpt-4-turbo-preview"
         
         # Cost tracking
