@@ -12,6 +12,7 @@ beautifulsoup4==4.12.3
 # Contact Verification
 dnspython==2.5.0
 phonenumbers==8.13.27
+PyPDF2==3.0.1
 
 # Data Processing
 pandas==2.2.0
