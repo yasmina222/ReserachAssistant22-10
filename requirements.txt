@@ -1,34 +1,29 @@
-# Protocol Education CI System - Requirements
-# Core dependencies for production deployment
+# Protocol Education CI System - STREAMLIT CLOUD COMPATIBLE
+# All versions tested and working on Python 3.13
 
-# Protocol Education CI System - Requirements
-# Core dependencies for production deployment
-
-# OpenAI Integration - UPGRADED FOR PYTHON 3.13
+# OpenAI Integration
 openai==1.54.4
-httpx==0.27.0
+
+# Web Framework
+streamlit
+
+# HTTP Requests
+requests
+httpx
 
 # Web Scraping
-requests==2.31.0
-beautifulsoup4==4.12.3
+beautifulsoup4
 
 # Contact Verification
-dnspython==2.5.0
-phonenumbers==8.13.27
+dnspython
+phonenumbers
 
 # Data Processing
-pandas==2.2.0
-openpyxl==3.1.2
+pandas
+openpyxl
 
-# PDF Processing - CRITICAL ADDITION
-PyPDF2==3.0.1
-
-# Web Interface
-streamlit==1.31.0
+# PDF Processing
+PyPDF2
 
 # Utilities
-python-dotenv==1.0.0
-
-# Optional but recommended
-numpy==1.26.3
-pytz==2024.1
+python-dotenv
