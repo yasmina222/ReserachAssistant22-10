@@ -1,0 +1,36 @@
+# Protocol Education CI System - Requirements
+# Core dependencies for production deployment
+
+# OpenAI Integration - COMPATIBLE VERSIONS
+openai==1.35.3
+httpx==0.27.0
+
+# Web Scraping
+requests==2.31.0
+beautifulsoup4==4.12.3
+lxml==5.1.0
+
+# Contact Verification
+dnspython==2.5.0
+phonenumbers==8.13.27
+
+# Data Processing
+pandas==2.2.0
+openpyxl==3.1.2
+
+# Web Interface
+streamlit==1.31.0
+
+# Async Processing
+aiohttp==3.9.3
+
+# Utilities
+python-dotenv==1.0.0
+tenacity==8.2.3
+
+# Logging and Monitoring
+colorlog==6.8.0
+
+# Optional but recommended
+numpy==1.26.3
+pytz==2024.1
