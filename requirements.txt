@@ -1,29 +1,12 @@
-# Protocol Education CI System - STREAMLIT CLOUD COMPATIBLE
-# All versions tested and working on Python 3.13
-
-# OpenAI Integration
-openai==1.54.4
-
-# Web Framework
-streamlit
-
-# HTTP Requests
-requests
+# FIXED VERSIONS - Compatible with Python 3.12
+openai
 httpx
-
-# Web Scraping
+streamlit
+requests
 beautifulsoup4
-
-# Contact Verification
 dnspython
 phonenumbers
-
-# Data Processing
 pandas
 openpyxl
-
-# PDF Processing
 PyPDF2
-
-# Utilities
 python-dotenv
