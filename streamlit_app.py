@@ -331,18 +331,33 @@ def display_conversation_starters(intel):
         
         for i, starter in enumerate(intel.conversation_starters, 1):
             with st.expander(f"**Conversation Starter #{i}**", expanded=(i == 1)):
-                st.write(starter['text'])
-                
-                st.write("**Sources:**")
-                for source in starter.get('sources', []):
-                    st.write(f"• {source}")
-                
-                if starter.get('confidence'):
-                    confidence_class = f"confidence-{starter['confidence'].lower()}"
-                    st.markdown(
-                        f'<span class="{confidence_class}">Confidence: {starter["confidence"]}</span>',
-                        unsafe_allow_html=True
-                    )
+                # Handle different data structures
+                if isinstance(starter, str):
+                    # If starter is just a string
+                    st.write(starter)
+                elif isinstance(starter, dict):
+                    # If starter is a dictionary, look for text in various keys
+                    text = starter.get('text') or starter.get('starter') or starter.get('content') or str(starter)
+                    st.write(text)
+                    
+                    # Show sources if available
+                    sources = starter.get('sources', [])
+                    if sources:
+                        st.write("**Sources:**")
+                        for source in sources:
+                            st.write(f"• {source}")
+                    
+                    # Show confidence if available
+                    confidence = starter.get('confidence')
+                    if confidence:
+                        confidence_class = f"confidence-{confidence.lower()}"
+                        st.markdown(
+                            f'<span class="{confidence_class}">Confidence: {confidence}</span>',
+                            unsafe_allow_html=True
+                        )
+                else:
+                    # Fallback: just display whatever it is
+                    st.write(str(starter))
     else:
         st.warning("No conversation starters generated")
 
