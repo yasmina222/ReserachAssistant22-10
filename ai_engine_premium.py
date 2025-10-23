@@ -12,7 +12,6 @@ from datetime import datetime
 import json
 import logging
 from dotenv import load_dotenv
-import streamlit as st
 
 load_dotenv()
 
@@ -22,8 +21,17 @@ class PremiumAIEngine:
     """Premium research engine using Serper + GPT-4-turbo"""
     
     def __init__(self):
-        self.openai_client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY")))
-        self.serper_api_key = st.secrets.get("SERPER_API_KEY", os.getenv("SERPER_API_KEY"))
+        # Get API keys from Streamlit secrets (Cloud) or environment (Local)
+        try:
+            import streamlit as st
+            openai_key = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
+            serper_key = st.secrets.get("SERPER_API_KEY", os.getenv("SERPER_API_KEY"))
+        except:
+            openai_key = os.getenv("OPENAI_API_KEY")
+            serper_key = os.getenv("SERPER_API_KEY")
+        
+        self.openai_client = OpenAI(api_key=openai_key)
+        self.serper_api_key = serper_key
         self.model = "gpt-4-turbo-preview"
         
         # Cost tracking
@@ -34,6 +42,7 @@ class PremiumAIEngine:
             'gpt_cost': 0.0,
             'total_cost': 0.0
         }
+
         
     def search_web(self, query: str, num_results: int = 10) -> List[Dict[str, Any]]:
         """Search using Serper API"""
