@@ -6,12 +6,13 @@ Handles all system configuration, API keys, and model selection
 import os
 from dotenv import load_dotenv
 from typing import Dict, Any
-import streamlit as st
 
+# Load environment variables from .env file (for local development)
 load_dotenv()
 
-# Get API keys from Streamlit secrets (Cloud) or environment (Local)
+# Get API keys - Try Streamlit secrets first (Cloud), then environment (Local)
 try:
+    import streamlit as st
     OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv('OPENAI_API_KEY'))
     SERPER_API_KEY = st.secrets.get("SERPER_API_KEY", os.getenv('SERPER_API_KEY'))
     SCRAPER_API_KEY = st.secrets.get("SCRAPER_API_KEY", os.getenv('SCRAPER_API_KEY'))
@@ -20,8 +21,7 @@ except:
     SERPER_API_KEY = os.getenv('SERPER_API_KEY')
     SCRAPER_API_KEY = os.getenv('SCRAPER_API_KEY')
 
-# OpenAI Configuration
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+# OpenAI Organization ID (optional)
 OPENAI_ORG_ID = os.getenv('OPENAI_ORG_ID', None)
 
 # Model Selection Strategy (optimized for $150/month budget)
