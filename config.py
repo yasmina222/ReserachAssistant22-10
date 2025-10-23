@@ -6,9 +6,19 @@ Handles all system configuration, API keys, and model selection
 import os
 from dotenv import load_dotenv
 from typing import Dict, Any
+import streamlit as st
 
-# Load environment variables
 load_dotenv()
+
+# Get API keys from Streamlit secrets (Cloud) or environment (Local)
+try:
+    OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv('OPENAI_API_KEY'))
+    SERPER_API_KEY = st.secrets.get("SERPER_API_KEY", os.getenv('SERPER_API_KEY'))
+    SCRAPER_API_KEY = st.secrets.get("SCRAPER_API_KEY", os.getenv('SCRAPER_API_KEY'))
+except:
+    OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+    SERPER_API_KEY = os.getenv('SERPER_API_KEY')
+    SCRAPER_API_KEY = os.getenv('SCRAPER_API_KEY')
 
 # OpenAI Configuration
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
