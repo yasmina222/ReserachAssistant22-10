@@ -335,10 +335,51 @@ def display_conversation_starters(intel):
                 if isinstance(starter, str):
                     # If starter is just a string
                     st.write(starter)
+                    
+                elif hasattr(starter, 'detail'):
+                    # ConversationStarter object from models.py
+                    # Show topic as header if available
+                    if hasattr(starter, 'topic') and starter.topic:
+                        st.markdown(f"**{starter.topic}**")
+                    
+                    # Show the main detail/content
+                    st.write(starter.detail)
+                    
+                    # Show source URL if available
+                    if hasattr(starter, 'source_url') and starter.source_url:
+                        st.write(f"**Source:** {starter.source_url}")
+                    
+                    # Show relevance score if available
+                    if hasattr(starter, 'relevance_score') and starter.relevance_score:
+                        score = starter.relevance_score
+                        if score > 0.8:
+                            confidence_class = "confidence-high"
+                            confidence_label = "HIGH"
+                        elif score > 0.6:
+                            confidence_class = "confidence-medium"
+                            confidence_label = "MEDIUM"
+                        else:
+                            confidence_class = "confidence-low"
+                            confidence_label = "LOW"
+                        
+                        st.markdown(
+                            f'<span class="{confidence_class}">Relevance: {confidence_label} ({score:.0%})</span>',
+                            unsafe_allow_html=True
+                        )
+                    
+                    # Show date if available
+                    if hasattr(starter, 'date') and starter.date:
+                        st.caption(f"Date: {starter.date.strftime('%Y-%m-%d')}")
+                        
                 elif isinstance(starter, dict):
-                    # If starter is a dictionary, look for text in various keys
-                    text = starter.get('text') or starter.get('starter') or starter.get('content') or str(starter)
+                    # Dictionary format (fallback)
+                    # Look for text in various keys
+                    text = starter.get('detail') or starter.get('text') or starter.get('starter') or starter.get('content') or str(starter)
                     st.write(text)
+                    
+                    # Show topic if available
+                    if 'topic' in starter:
+                        st.caption(f"Topic: {starter['topic']}")
                     
                     # Show sources if available
                     sources = starter.get('sources', [])
@@ -347,14 +388,10 @@ def display_conversation_starters(intel):
                         for source in sources:
                             st.write(f"• {source}")
                     
-                    # Show confidence if available
-                    confidence = starter.get('confidence')
-                    if confidence:
-                        confidence_class = f"confidence-{confidence.lower()}"
-                        st.markdown(
-                            f'<span class="{confidence_class}">Confidence: {confidence}</span>',
-                            unsafe_allow_html=True
-                        )
+                    # Show relevance/confidence if available
+                    relevance = starter.get('relevance_score') or starter.get('confidence')
+                    if relevance:
+                        st.caption(f"Relevance: {relevance:.0%}")
                 else:
                     # Fallback: just display whatever it is
                     st.write(str(starter))
@@ -369,15 +406,45 @@ def display_contacts(intel):
         
         for contact in intel.contacts:
             with st.container():
-                st.markdown(f"""
-                <div class="contact-card">
-                    <h4>{contact.name}</h4>
-                    <p><strong>Role:</strong> {contact.role}</p>
-                    <p><strong>Email:</strong> {contact.email}</p>
-                    {f'<p><strong>Phone:</strong> {contact.phone}</p>' if contact.phone else ''}
-                    {f'<p><strong>Source:</strong> {contact.source}</p>' if contact.source else ''}
-                </div>
-                """, unsafe_allow_html=True)
+                # Handle Contact objects properly
+                if hasattr(contact, 'full_name'):
+                    # Contact object from models.py
+                    name = contact.full_name
+                    role = contact.role.value.replace('_', ' ').title() if hasattr(contact.role, 'value') else str(contact.role)
+                    email = contact.email or 'Not available'
+                    phone = contact.phone or ''
+                    confidence = f"{contact.confidence_score:.0%}" if hasattr(contact, 'confidence_score') else ''
+                    
+                    st.markdown(f"""
+                    <div class="contact-card">
+                        <h4>{name}</h4>
+                        <p><strong>Role:</strong> {role}</p>
+                        <p><strong>Email:</strong> {email}</p>
+                        {f'<p><strong>Phone:</strong> {phone}</p>' if phone else ''}
+                        {f'<p><strong>Confidence:</strong> {confidence}</p>' if confidence else ''}
+                        {f'<p><strong>Notes:</strong> {contact.notes}</p>' if hasattr(contact, 'notes') and contact.notes else ''}
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                elif isinstance(contact, dict):
+                    # Dictionary format (fallback)
+                    name = contact.get('name', contact.get('full_name', 'Unknown'))
+                    role = contact.get('role', 'Unknown')
+                    email = contact.get('email', 'Not available')
+                    phone = contact.get('phone', '')
+                    source = contact.get('source', '')
+                    
+                    st.markdown(f"""
+                    <div class="contact-card">
+                        <h4>{name}</h4>
+                        <p><strong>Role:</strong> {role}</p>
+                        <p><strong>Email:</strong> {email}</p>
+                        {f'<p><strong>Phone:</strong> {phone}</p>' if phone else ''}
+                        {f'<p><strong>Source:</strong> {source}</p>' if source else ''}
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.write(str(contact))
     else:
         st.info("No contacts found")
 
@@ -388,14 +455,50 @@ def display_competitors(intel):
         st.warning(f"⚠️ {len(intel.competitors)} competitor(s) detected")
         
         for comp in intel.competitors:
-            st.markdown(f"""
-            <div class="contact-card">
-                <span class="competitor-badge">COMPETITOR</span>
-                <strong>{comp['name']}</strong>
-                <p>{comp['evidence']}</p>
-                <p><em>Source: {comp['source']}</em></p>
-            </div>
-            """, unsafe_allow_html=True)
+            # Handle CompetitorPresence objects properly
+            if hasattr(comp, 'agency_name'):
+                # CompetitorPresence object from models.py
+                name = comp.agency_name
+                presence = comp.presence_type if hasattr(comp, 'presence_type') else 'Unknown'
+                confidence = f"{comp.confidence_score:.0%}" if hasattr(comp, 'confidence_score') else ''
+                
+                # Get evidence
+                evidence = ''
+                if hasattr(comp, 'evidence_urls') and comp.evidence_urls:
+                    evidence = f"Found in: {', '.join(comp.evidence_urls[:2])}"
+                
+                # Get weaknesses
+                weaknesses = ''
+                if hasattr(comp, 'weaknesses') and comp.weaknesses:
+                    weaknesses = '<br>'.join([f"• {w}" for w in comp.weaknesses[:3]])
+                
+                st.markdown(f"""
+                <div class="contact-card">
+                    <span class="competitor-badge">COMPETITOR</span>
+                    <strong>{name}</strong>
+                    <p><strong>Presence Type:</strong> {presence}</p>
+                    {f'<p><strong>Confidence:</strong> {confidence}</p>' if confidence else ''}
+                    {f'<p>{evidence}</p>' if evidence else ''}
+                    {f'<p><strong>Identified Weaknesses:</strong><br>{weaknesses}</p>' if weaknesses else ''}
+                </div>
+                """, unsafe_allow_html=True)
+                
+            elif isinstance(comp, dict):
+                # Dictionary format (fallback)
+                name = comp.get('name', comp.get('agency_name', 'Unknown'))
+                evidence = comp.get('evidence', comp.get('presence_type', ''))
+                source = comp.get('source', '')
+                
+                st.markdown(f"""
+                <div class="contact-card">
+                    <span class="competitor-badge">COMPETITOR</span>
+                    <strong>{name}</strong>
+                    <p>{evidence}</p>
+                    {f'<p><em>Source: {source}</em></p>' if source else ''}
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.write(str(comp))
     else:
         st.success("✅ No competitor agencies detected")
 
@@ -702,4 +805,3 @@ elif operation_mode == "Borough Sweep":
 if __name__ == "__main__":
     if not os.path.exists('.env'):
         st.warning(".env file not found")
-
