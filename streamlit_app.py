@@ -2,6 +2,7 @@
 Protocol Education CI System - Streamlit Web Interface
 User-friendly web application for the intelligence system
 Enhanced: Added Ofsted deep analysis and vacancy display
+FIXED: Removed all black boxes and improved visibility
 """
 
 import streamlit as st
@@ -686,4 +687,5 @@ elif operation_mode == "Borough Sweep":
 if __name__ == "__main__":
     if not os.path.exists('.env'):
         st.warning(".env file not found")
+
 
