@@ -1,6 +1,8 @@
 """
 Protocol Education CI System - Configuration Module
 Handles all system configuration, API keys, and model selection
+
+UPDATED: GPT-4o as primary model
 """
 
 import os
@@ -24,14 +26,15 @@ except:
 # OpenAI Organization ID (optional)
 OPENAI_ORG_ID = os.getenv('OPENAI_ORG_ID', None)
 
-# Model Selection Strategy (optimized for $150/month budget)
+# Model Selection Strategy - UPDATED TO GPT-4o
 MODELS = {
     'html_extraction': 'gpt-4o',  # Best for HTML/vision tasks
     'pdf_extraction': 'gpt-4o-mini',  # Cost-effective for PDFs
     'pdf_text_only': 'gpt-3.5-turbo',  # Cheapest for text-only PDFs
     'fallback': 'o1-mini',  # When GPT-4o struggles
     'embeddings': 'text-embedding-3-small',  # For competitor matching
-    'batch_processing': 'gpt-4o-mini'  # For bulk operations
+    'batch_processing': 'gpt-4o-mini',  # For bulk operations
+    'primary': 'gpt-4o'  # PRIMARY MODEL - Used for intelligence analysis
 }
 
 # Rate Limits (requests per minute)
