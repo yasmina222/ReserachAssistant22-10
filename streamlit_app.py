@@ -2,7 +2,7 @@
 Protocol Education CI System - Streamlit Web Interface
 User-friendly web application for the intelligence system
 Enhanced: Added Ofsted deep analysis and vacancy display
-FIXED: Removed all black boxes and improved visibility
+FIXED: Removed all black boxes and changed button to BLUE
 """
 
 import streamlit as st
@@ -40,7 +40,7 @@ processor = get_processor()
 exporter = get_exporter()
 cache = get_cache()
 
-# FIXED CSS - ONLY BLACK BOX FIX, EVERYTHING ELSE ORIGINAL
+# FIXED CSS - BLACK BOXES REMOVED + BLUE BUTTON
 st.markdown("""
 <style>
     /* White background everywhere */
@@ -71,10 +71,16 @@ st.markdown("""
         border: 2px solid #CCCCCC !important;
     }
     
-    /* Buttons remain styled */
+    /* BLUE BUTTON - FIXED FROM RED */
     button[kind="primary"] {
-        background-color: #FF4B4B !important;
+        background-color: #0066FF !important;
         color: #FFFFFF !important;
+        border: none !important;
+        font-weight: 600 !important;
+    }
+    
+    button[kind="primary"]:hover {
+        background-color: #0052CC !important;
     }
     
     /* Metrics - BLACK */
@@ -89,7 +95,8 @@ st.markdown("""
         font-weight: 600 !important;
     }
     
-    /* ===== BLACK BOX FIX - EXPANDERS ===== */
+    /* ===== COMPLETE BLACK BOX FIX - EXPANDERS ===== */
+    /* Remove ALL dark backgrounds from expanders */
     .streamlit-expanderHeader {
         color: #000000 !important;
         font-weight: 600 !important;
@@ -101,22 +108,52 @@ st.markdown("""
         color: #000000 !important;
     }
     
-    /* Fix nested divs inside expanders - THIS IS THE KEY FIX */
+    /* Fix ALL nested divs inside expanders */
+    details {
+        background-color: transparent !important;
+    }
+    
     details div {
         background-color: transparent !important;
         color: #000000 !important;
+    }
+    
+    details[open] {
+        background-color: #FFFFFF !important;
     }
     
     details[open] > div {
         background-color: #FFFFFF !important;
     }
     
+    details > div > div {
+        background-color: transparent !important;
+    }
+    
+    /* Target the expander container specifically */
     [data-testid="stExpander"] {
         background-color: #FFFFFF !important;
+        border: 1px solid #E5E7EB !important;
     }
     
     [data-testid="stExpander"] > div {
         background-color: #FFFFFF !important;
+    }
+    
+    [data-testid="stExpander"] div {
+        background-color: transparent !important;
+    }
+    
+    /* Force all children of expanders to be transparent/white */
+    [data-testid="stExpander"] * {
+        background-color: transparent !important;
+    }
+    
+    /* Make sure text inside expanders is visible */
+    [data-testid="stExpander"] p,
+    [data-testid="stExpander"] span,
+    [data-testid="stExpander"] div {
+        color: #000000 !important;
     }
     /* ===== END BLACK BOX FIX ===== */
     
@@ -202,7 +239,7 @@ st.markdown("""
     
     .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
         color: #000000 !important;
-        border-bottom: 2px solid #FF4B4B !important;
+        border-bottom: 2px solid #0066FF !important;
     }
     
     /* Tables */
@@ -253,184 +290,147 @@ def display_school_intelligence(intel):
     # School info
     st.subheader(f"{intel.school_name}")
     if intel.website:
-        st.write(f"[{intel.website}]({intel.website})")
+        st.write(f"🌐 {intel.website}")
+    if intel.ofsted_rating:
+        st.write(f"⭐ Ofsted: {intel.ofsted_rating}")
     
-    # Tabs for different sections
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-        "Contacts", "Competitors", "Intelligence", "Financial Data", 
-        "Ofsted Analysis", "Vacancies", "Raw Data"
-    ])
+    st.divider()
     
-    with tab1:
-        display_contacts(intel.contacts)
+    # Create tabs
+    tabs = st.tabs(["Conversation Starters", "Contacts", "Competitors", "Financial Analysis", "Ofsted Analysis", "Vacancies"])
     
-    with tab2:
+    # Tab 1: Conversation starters
+    with tabs[0]:
+        display_conversation_starters(intel)
+    
+    # Tab 2: Contacts
+    with tabs[1]:
+        display_contacts(intel)
+    
+    # Tab 3: Competitors
+    with tabs[2]:
         display_competitors(intel)
     
-    with tab3:
-        display_conversation_intel(intel)
+    # Tab 4: Financial Analysis
+    with tabs[3]:
+        display_financial_analysis(intel)
     
-    with tab4:
-        display_financial_data(intel)
-    
-    with tab5:
+    # Tab 5: Ofsted Analysis
+    with tabs[4]:
         display_ofsted_analysis(intel)
     
-    with tab6:
+    # Tab 6: Vacancies
+    with tabs[5]:
         display_vacancies(intel)
-    
-    with tab7:
-        # Show raw data for debugging
-        st.json({
-            'school_name': intel.school_name,
-            'data_quality_score': intel.data_quality_score,
-            'sources_checked': intel.sources_checked,
-            'contacts_count': len(intel.contacts),
-            'competitors_count': len(intel.competitors),
-            'has_ofsted_enhanced': hasattr(intel, 'ofsted_enhanced'),
-            'has_vacancy_data': hasattr(intel, 'vacancy_data')
-        })
 
-def display_contacts(contacts):
-    """Display contact information"""
-    
-    if not contacts:
-        st.warning("No contacts found")
-        return
-    
-    # Group by role
-    for role in ContactType:
-        role_contacts = [c for c in contacts if c.role == role]
-        
-        if role_contacts:
-            st.write(f"**{role.value.replace('_', ' ').title()}**")
-            
-            for contact in role_contacts:
-                confidence_class = (
-                    "confidence-high" if contact.confidence_score > 0.8
-                    else "confidence-medium" if contact.confidence_score > 0.5
-                    else "confidence-low"
-                )
-                
-                col1, col2 = st.columns([3, 1])
-                
-                with col1:
-                    st.write(f"**{contact.full_name}**")
-                    if contact.email:
-                        st.write(f"Email: {contact.email}")
-                    if contact.phone:
-                        st.write(f"Phone: {contact.phone}")
-                
-                with col2:
-                    st.markdown(
-                        f'<span class="{confidence_class}">Confidence: {contact.confidence_score:.0%}</span>',
-                        unsafe_allow_html=True
-                    )
-                
-                st.divider()
-
-def display_competitors(intel):
-    """Display competitor analysis"""
-    
-    if not intel.competitors:
-        st.info("No competitors detected")
-        return
-    
-    st.write("**Detected Competitors:**")
-    
-    for comp in intel.competitors:
-        col1, col2 = st.columns([3, 1])
-        
-        with col1:
-            st.markdown(
-                f'<span class="competitor-badge">{comp.agency_name}</span>',
-                unsafe_allow_html=True
-            )
-            st.write(f"Type: {comp.presence_type}")
-            
-            if comp.weaknesses:
-                st.write("Weaknesses:")
-                for weakness in comp.weaknesses:
-                    st.write(f"  • {weakness}")
-        
-        with col2:
-            st.metric("Confidence", f"{comp.confidence_score:.0%}")
-    
-    if intel.win_back_strategy:
-        st.write("**Win-back Strategy:**")
-        st.info(intel.win_back_strategy)
-    
-    if intel.protocol_advantages:
-        st.write("**Protocol Advantages:**")
-        for advantage in intel.protocol_advantages:
-            st.write(f"✓ {advantage}")
-
-def display_conversation_intel(intel):
-    """Display conversation intelligence"""
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        if intel.ofsted_rating:
-            st.write(f"**Ofsted Rating:** {intel.ofsted_rating}")
-        
-        if intel.recent_achievements:
-            st.write("**Recent Achievements:**")
-            for achievement in intel.recent_achievements[:5]:
-                st.write(f"• {achievement}")
-    
-    with col2:
-        if intel.upcoming_events:
-            st.write("**Upcoming Events:**")
-            for event in intel.upcoming_events[:5]:
-                st.write(f"• {event}")
-        
-        if intel.leadership_changes:
-            st.write("**Leadership Changes:**")
-            for change in intel.leadership_changes[:3]:
-                st.write(f"• {change}")
+def display_conversation_starters(intel):
+    """Display AI-generated conversation starters"""
     
     if intel.conversation_starters:
-        st.write("**Top Conversation Starters:**")
+        st.info(f"📋 Generated {len(intel.conversation_starters)} conversation starters")
         
-        # Show top 5 conversation starters
-        for i, starter in enumerate(intel.conversation_starters[:5], 1):
-            with st.expander(f"{i}. {starter.topic} (Relevance: {starter.relevance_score:.0%})"):
-                st.write(starter.detail)
-                if hasattr(starter, 'source_url') and starter.source_url:
-                    st.caption(f"Source: {starter.source_url}")
+        for i, starter in enumerate(intel.conversation_starters, 1):
+            with st.expander(f"**Conversation Starter #{i}**", expanded=(i == 1)):
+                st.write(starter['text'])
+                
+                st.write("**Sources:**")
+                for source in starter.get('sources', []):
+                    st.write(f"• {source}")
+                
+                if starter.get('confidence'):
+                    confidence_class = f"confidence-{starter['confidence'].lower()}"
+                    st.markdown(
+                        f'<span class="{confidence_class}">Confidence: {starter["confidence"]}</span>',
+                        unsafe_allow_html=True
+                    )
+    else:
+        st.warning("No conversation starters generated")
 
-def display_financial_data(intel):
-    """Display financial data and recruitment costs"""
+def display_contacts(intel):
+    """Display contact information"""
+    
+    if intel.contacts:
+        st.success(f"Found {len(intel.contacts)} contacts")
+        
+        for contact in intel.contacts:
+            with st.container():
+                st.markdown(f"""
+                <div class="contact-card">
+                    <h4>{contact.name}</h4>
+                    <p><strong>Role:</strong> {contact.role}</p>
+                    <p><strong>Email:</strong> {contact.email}</p>
+                    {f'<p><strong>Phone:</strong> {contact.phone}</p>' if contact.phone else ''}
+                    {f'<p><strong>Source:</strong> {contact.source}</p>' if contact.source else ''}
+                </div>
+                """, unsafe_allow_html=True)
+    else:
+        st.info("No contacts found")
+
+def display_competitors(intel):
+    """Display competitor agencies"""
+    
+    if intel.competitors:
+        st.warning(f"⚠️ {len(intel.competitors)} competitor(s) detected")
+        
+        for comp in intel.competitors:
+            st.markdown(f"""
+            <div class="contact-card">
+                <span class="competitor-badge">COMPETITOR</span>
+                <strong>{comp['name']}</strong>
+                <p>{comp['evidence']}</p>
+                <p><em>Source: {comp['source']}</em></p>
+            </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.success("✅ No competitor agencies detected")
+
+def display_financial_analysis(intel):
+    """Display financial analysis data"""
     
     if hasattr(intel, 'financial_data') and intel.financial_data:
         financial = intel.financial_data
         
-        if financial.get('error'):
-            st.warning(f"Could not retrieve financial data: {financial['error']}")
-            return
-        
-        # Entity info
-        if 'entity_found' in financial:
-            entity = financial['entity_found']
+        # Check if this is MAT data
+        if 'trust_info' in financial:
+            st.subheader("Multi-Academy Trust Information")
             
-            if entity['type'] == 'Trust':
-                st.info(f"Found trust-level financial data for **{entity['name']}**")
+            trust_info = financial['trust_info']
             
-            col1, col2, col3 = st.columns(3)
+            col1, col2, col3, col4 = st.columns(4)
             with col1:
-                st.write(f"**Entity:** {entity['name']}")
-                st.write(f"**Type:** {entity['type']}")
+                st.metric("Trust Name", trust_info.get('name', 'N/A'))
             with col2:
-                st.write(f"**URN:** {entity['urn']}")
+                st.metric("Total Schools", trust_info.get('total_schools', 'N/A'))
             with col3:
-                st.write(f"**Confidence:** {entity.get('confidence', 0):.0%}")
-        
-        st.divider()
-        
-        # Financial data
-        if 'financial' in financial and financial['financial']:
-            fin_data = financial['financial']
+                st.metric("Total Pupils", trust_info.get('total_pupils', 'N/A'))
+            with col4:
+                st.metric("CEO", trust_info.get('ceo_name', 'N/A'))
+            
+            # Financial overview
+            if 'financial_overview' in financial:
+                st.subheader("Financial Overview")
+                fin_data = financial['financial_overview']
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Total Income", f"£{fin_data['total_income']:,}")
+                with col2:
+                    st.metric("Total Expenditure", f"£{fin_data['total_expenditure']:,}")
+                with col3:
+                    revenue = fin_data['total_income'] - fin_data['total_expenditure']
+                    st.metric("Revenue", f"£{revenue:,}")
+                
+                # Staff costs
+                st.subheader("Staff Costs")
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Teaching Staff", f"£{fin_data['teaching_staff']:,}")
+                with col2:
+                    st.metric("Supply Staff", f"£{fin_data['supply_teachers']:,}")
+                with col3:
+                    pct_supply = (fin_data['supply_teachers'] / fin_data['teaching_staff'] * 100) if fin_data['teaching_staff'] > 0 else 0
+                    st.metric("Supply %", f"{pct_supply:.1f}%")
             
             # Recruitment costs
             if 'recruitment_estimates' in fin_data:
@@ -687,3 +687,4 @@ elif operation_mode == "Borough Sweep":
 if __name__ == "__main__":
     if not os.path.exists('.env'):
         st.warning(".env file not found")
+
