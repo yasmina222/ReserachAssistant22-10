@@ -16,7 +16,13 @@ class FinancialDataEngine:
     def __init__(self, serper_engine):
         """Initialize with existing Serper engine"""
         self.serper = serper_engine
-        self.scraper_api_key = os.getenv('SCRAPER_API_KEY')
+        
+        # FIXED: Get API key from Streamlit secrets first, then environment
+        try:
+            import streamlit as st
+            self.scraper_api_key = st.secrets.get('SCRAPER_API_KEY', os.getenv('SCRAPER_API_KEY'))
+        except:
+            self.scraper_api_key = os.getenv('SCRAPER_API_KEY')
         
     def get_school_urn(self, school_name: str, location: Optional[str] = None) -> Dict[str, Any]:
         """
