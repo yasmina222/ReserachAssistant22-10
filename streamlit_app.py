@@ -18,7 +18,7 @@ from models import ContactType
 # Page configuration
 st.set_page_config(
     page_title="Protocol Education Research Assistant",
-    page_icon="🔍",
+    page_icon="P",
     layout="wide"
 )
 
@@ -39,26 +39,21 @@ processor = get_processor()
 exporter = get_exporter()
 cache = get_cache()
 
-# ENHANCED CSS - COMPLETELY FIXED - NO MORE BLACK BOXES
+# FIXED CSS - ONLY BLACK BOX FIX, EVERYTHING ELSE ORIGINAL
 st.markdown("""
 <style>
-    /* ===== GLOBAL OVERRIDES - FORCE WHITE BACKGROUNDS EVERYWHERE ===== */
-    * {
-        background-color: transparent !important;
-    }
-    
-    .stApp, .main, .block-container {
+    /* White background everywhere */
+    .stApp {
         background-color: #FFFFFF !important;
     }
     
-    /* ===== ALL TEXT BLACK ===== */
-    body, p, span, div, label, li, td, th, h1, h2, h3, h4, h5, h6, 
-    a, strong, em, code, pre, blockquote {
+    /* ALL TEXT BLACK */
+    body, p, span, div, label, li, td, th, h1, h2, h3, h4, h5, h6 {
         color: #000000 !important;
     }
     
     /* Streamlit specific text elements */
-    .stMarkdown, .stText, [data-testid="stMarkdownContainer"] {
+    .stMarkdown, .stText {
         color: #000000 !important;
     }
     
@@ -68,46 +63,20 @@ st.markdown("""
         font-weight: 700 !important;
     }
     
-    /* ===== CRITICAL: EXPANDERS - THIS IS WHERE BLACK BOXES COME FROM ===== */
-    
-    /* Expander header - light gray background */
-    .streamlit-expanderHeader {
-        background-color: #F3F4F6 !important;
+    /* Input fields - black text, white background */
+    input, textarea, select {
         color: #000000 !important;
-        font-weight: 600 !important;
-        border: 1px solid #E5E7EB !important;
-    }
-    
-    /* Expander content - FORCE WHITE */
-    .streamlit-expanderContent {
         background-color: #FFFFFF !important;
-        color: #000000 !important;
+        border: 2px solid #CCCCCC !important;
     }
     
-    /* ALL divs inside expanders - FORCE WHITE/TRANSPARENT */
-    details > div,
-    details > div > div,
-    details > div > div > div {
-        background-color: #FFFFFF !important;
-        color: #000000 !important;
+    /* Buttons remain styled */
+    button[kind="primary"] {
+        background-color: #FF4B4B !important;
+        color: #FFFFFF !important;
     }
     
-    /* Specific expander inner elements */
-    [data-testid="stExpander"] {
-        background-color: #FFFFFF !important;
-        border: 1px solid #E5E7EB !important;
-    }
-    
-    [data-testid="stExpander"] > div {
-        background-color: #FFFFFF !important;
-    }
-    
-    /* When expander is open */
-    details[open] > div {
-        background-color: #FFFFFF !important;
-    }
-    
-    /* ===== METRICS - BLACK TEXT ===== */
+    /* Metrics - BLACK */
     [data-testid="stMetricValue"] {
         color: #000000 !important;
         font-size: 24px !important;
@@ -119,154 +88,66 @@ st.markdown("""
         font-weight: 600 !important;
     }
     
-    [data-testid="stMetricDelta"] {
-        color: #000000 !important;
-    }
-    
-    /* ===== ALERT BOXES - PROPER BACKGROUNDS ===== */
-    .stAlert, [data-baseweb="notification"] {
-        color: #000000 !important;
-    }
-    
-    .stSuccess, [data-baseweb="notification"][kind="success"] {
-        background-color: #D1FAE5 !important;
-        color: #065F46 !important;
-        border-left: 4px solid #10B981 !important;
-    }
-    
-    .stInfo, [data-baseweb="notification"][kind="info"] {
-        background-color: #DBEAFE !important;
-        color: #1E40AF !important;
-        border-left: 4px solid #3B82F6 !important;
-    }
-    
-    .stWarning, [data-baseweb="notification"][kind="warning"] {
-        background-color: #FEF3C7 !important;
-        color: #92400E !important;
-        border-left: 4px solid #F59E0B !important;
-    }
-    
-    .stError, [data-baseweb="notification"][kind="error"] {
-        background-color: #FEE2E2 !important;
-        color: #991B1B !important;
-        border-left: 4px solid #EF4444 !important;
-    }
-    
-    /* ===== INPUT FIELDS ===== */
-    input, textarea, select {
-        color: #000000 !important;
-        background-color: #FFFFFF !important;
-        border: 2px solid #D1D5DB !important;
-    }
-    
-    input:focus, textarea:focus, select:focus {
-        border-color: #3B82F6 !important;
-    }
-    
-    /* ===== BUTTONS ===== */
-    button[kind="primary"] {
-        background-color: #3B82F6 !important;
-        color: #FFFFFF !important;
-        border: none !important;
-    }
-    
-    button[kind="primary"]:hover {
-        background-color: #2563EB !important;
-    }
-    
-    button[kind="secondary"] {
-        background-color: #FFFFFF !important;
-        color: #000000 !important;
-        border: 2px solid #D1D5DB !important;
-    }
-    
-    /* ===== SIDEBAR ===== */
-    [data-testid="stSidebar"] {
-        background-color: #F9FAFB !important;
-    }
-    
-    [data-testid="stSidebar"] * {
-        color: #000000 !important;
-    }
-    
-    [data-testid="stSidebar"] > div {
-        background-color: #F9FAFB !important;
-    }
-    
-    /* ===== TABS ===== */
-    .stTabs [data-baseweb="tab-list"] {
-        background-color: #FFFFFF !important;
-    }
-    
-    .stTabs [data-baseweb="tab-list"] button {
+    /* ===== BLACK BOX FIX - EXPANDERS ===== */
+    .streamlit-expanderHeader {
         color: #000000 !important;
         font-weight: 600 !important;
+        background-color: #F3F4F6 !important;
+    }
+    
+    .streamlit-expanderContent {
+        background-color: #FFFFFF !important;
+        color: #000000 !important;
+    }
+    
+    /* Fix nested divs inside expanders - THIS IS THE KEY FIX */
+    details div {
         background-color: transparent !important;
+        color: #000000 !important;
     }
     
-    .stTabs [data-baseweb="tab-list"] button:hover {
-        color: #3B82F6 !important;
-    }
-    
-    .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
-        color: #3B82F6 !important;
-        border-bottom: 3px solid #3B82F6 !important;
-    }
-    
-    .stTabs [data-baseweb="tab-panel"] {
+    details[open] > div {
         background-color: #FFFFFF !important;
     }
     
-    /* ===== TABLES ===== */
-    table {
-        color: #000000 !important;
+    [data-testid="stExpander"] {
         background-color: #FFFFFF !important;
     }
     
-    th {
-        background-color: #F3F4F6 !important;
-        color: #000000 !important;
-        font-weight: 700 !important;
-        border-bottom: 2px solid #E5E7EB !important;
-    }
-    
-    td {
-        color: #000000 !important;
-        border-bottom: 1px solid #E5E7EB !important;
+    [data-testid="stExpander"] > div {
         background-color: #FFFFFF !important;
     }
+    /* ===== END BLACK BOX FIX ===== */
     
-    tr:hover {
-        background-color: #F9FAFB !important;
+    /* Success/Info/Warning/Error boxes - KEEP ORIGINAL COLORS */
+    .stAlert {
+        color: #000000 !important;
     }
     
-    /* ===== DATAFRAME ===== */
-    [data-testid="stDataFrame"] {
+    [data-baseweb="notification"] {
         background-color: #FFFFFF !important;
-    }
-    
-    /* ===== CODE BLOCKS ===== */
-    code {
         color: #000000 !important;
-        background-color: #F3F4F6 !important;
-        padding: 2px 6px !important;
-        border-radius: 4px !important;
     }
     
-    pre {
-        color: #000000 !important;
-        background-color: #F3F4F6 !important;
-        padding: 1rem !important;
-        border-radius: 8px !important;
+    .stSuccess {
+        background-color: #D1FAE5 !important;
+        color: #065F46 !important;
     }
     
-    /* ===== DIVIDERS ===== */
-    hr {
-        border-color: #E5E7EB !important;
-        margin: 2rem 0 !important;
+    .stInfo {
+        background-color: #DBEAFE !important;
+        color: #1E40AF !important;
     }
     
-    /* ===== CUSTOM COMPONENTS ===== */
+    .stWarning {
+        background-color: #FEF3C7 !important;
+        color: #92400E !important;
+    }
+    
+    .stError {
+        background-color: #FEE2E2 !important;
+        color: #991B1B !important;
+    }
     
     /* Contact cards */
     .contact-card {
@@ -303,63 +184,51 @@ st.markdown("""
         font-weight: 600;
     }
     
-    /* ===== COLUMNS ===== */
-    [data-testid="column"] {
-        background-color: transparent !important;
+    /* Sidebar - light background */
+    [data-testid="stSidebar"] {
+        background-color: #F9FAFB !important;
     }
     
-    /* ===== CONTAINER BLOCKS ===== */
-    [data-testid="block-container"] {
-        background-color: #FFFFFF !important;
-    }
-    
-    /* ===== SPINNER/PROGRESS ===== */
-    .stSpinner > div {
-        border-top-color: #3B82F6 !important;
-    }
-    
-    [data-testid="stProgress"] > div > div {
-        background-color: #3B82F6 !important;
-    }
-    
-    /* ===== SELECTBOX/MULTISELECT ===== */
-    [data-baseweb="select"] {
-        background-color: #FFFFFF !important;
-    }
-    
-    [data-baseweb="popover"] {
-        background-color: #FFFFFF !important;
-    }
-    
-    /* ===== RADIO BUTTONS ===== */
-    [data-testid="stRadio"] > div {
-        background-color: transparent !important;
-    }
-    
-    /* ===== CHECKBOXES ===== */
-    [data-testid="stCheckbox"] {
-        background-color: transparent !important;
-    }
-    
-    /* ===== JSON DISPLAY ===== */
-    .stJson {
-        background-color: #F3F4F6 !important;
+    [data-testid="stSidebar"] * {
         color: #000000 !important;
     }
     
-    /* ===== FORCE ALL DIVS TO BE VISIBLE ===== */
-    div {
-        color: inherit !important;
+    /* Tabs - BLACK TEXT */
+    .stTabs [data-baseweb="tab-list"] button {
+        color: #000000 !important;
+        font-weight: 600 !important;
     }
     
-    /* ===== HOVER STATES - PREVENT BLACK BOXES ===== */
-    div:hover {
-        background-color: inherit !important;
+    .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
+        color: #000000 !important;
+        border-bottom: 2px solid #FF4B4B !important;
     }
     
-    /* Specific hover fix for containers */
-    .element-container:hover {
-        background-color: transparent !important;
+    /* Tables */
+    table {
+        color: #000000 !important;
+    }
+    
+    th {
+        background-color: #F3F4F6 !important;
+        color: #000000 !important;
+        font-weight: 700 !important;
+    }
+    
+    td {
+        color: #000000 !important;
+        border-bottom: 1px solid #E5E7EB !important;
+    }
+    
+    /* Code blocks */
+    code {
+        color: #000000 !important;
+        background-color: #F3F4F6 !important;
+    }
+    
+    pre {
+        color: #000000 !important;
+        background-color: #F3F4F6 !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -447,9 +316,9 @@ def display_contacts(contacts):
                 with col1:
                     st.write(f"**{contact.full_name}**")
                     if contact.email:
-                        st.write(f"📧 {contact.email}")
+                        st.write(f"Email: {contact.email}")
                     if contact.phone:
-                        st.write(f"📞 {contact.phone}")
+                        st.write(f"Phone: {contact.phone}")
                 
                 with col2:
                     st.markdown(
@@ -545,7 +414,7 @@ def display_financial_data(intel):
             entity = financial['entity_found']
             
             if entity['type'] == 'Trust':
-                st.info(f"🏢 Found trust-level financial data for **{entity['name']}**")
+                st.info(f"Found trust-level financial data for **{entity['name']}**")
             
             col1, col2, col3 = st.columns(3)
             with col1:
@@ -564,7 +433,7 @@ def display_financial_data(intel):
             
             # Recruitment costs
             if 'recruitment_estimates' in fin_data:
-                st.subheader("🎯 Annual Recruitment Costs")
+                st.subheader("Annual Recruitment Costs")
                 
                 estimates = fin_data['recruitment_estimates']
                 
@@ -587,7 +456,7 @@ def display_financial_data(intel):
             
             # Show insights
             if 'insights' in financial and financial['insights']:
-                st.subheader("💡 Key Insights")
+                st.subheader("Key Insights")
                 for insight in financial['insights']:
                     st.write(f"• {insight}")
         
@@ -613,14 +482,14 @@ def display_ofsted_analysis(intel):
             st.metric("Key Priorities", len(main_improvements))
         
         if ofsted_data.get('report_url'):
-            st.write(f"[📄 View Full Ofsted Report]({ofsted_data['report_url']})")
+            st.write(f"[View Full Ofsted Report]({ofsted_data['report_url']})")
         
         st.divider()
         
         # Priority order
         priority_order = ofsted_data.get('priority_order', [])
         if priority_order:
-            st.error("🎯 **OFSTED IMPROVEMENT PRIORITIES**")
+            st.error("OFSTED IMPROVEMENT PRIORITIES")
             for i, priority in enumerate(priority_order[:5], 1):
                 st.write(f"**{i}. {priority}**")
             st.markdown("---")
@@ -628,7 +497,7 @@ def display_ofsted_analysis(intel):
         # Main improvements
         main_improvements = ofsted_data.get('main_improvements', [])
         if main_improvements:
-            st.subheader("📋 Key Areas for Improvement")
+            st.subheader("Key Areas for Improvement")
             
             for improvement in main_improvements:
                 with st.expander(f"**{improvement['area']}**", expanded=True):
@@ -639,7 +508,7 @@ def display_ofsted_analysis(intel):
         # Subject improvements
         subject_improvements = ofsted_data.get('subject_improvements', {})
         if subject_improvements:
-            st.subheader("📚 Subject-Specific Improvements")
+            st.subheader("Subject-Specific Improvements")
             
             cols = st.columns(min(3, len(subject_improvements)))
             
@@ -647,7 +516,7 @@ def display_ofsted_analysis(intel):
                 with cols[idx % 3]:
                     urgency = details.get('urgency', 'MEDIUM')
                     if urgency == 'HIGH':
-                        st.error(f"**{subject.upper()}** ⚠️")
+                        st.error(f"**{subject.upper()}** - HIGH PRIORITY")
                     else:
                         st.warning(f"**{subject.upper()}**")
                     
@@ -816,5 +685,5 @@ elif operation_mode == "Borough Sweep":
 
 if __name__ == "__main__":
     if not os.path.exists('.env'):
-        st.warning(" .env file not found")
+        st.warning(".env file not found")
 
