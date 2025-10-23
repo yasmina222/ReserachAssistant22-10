@@ -2,7 +2,6 @@
 Protocol Education CI System - Streamlit Web Interface
 User-friendly web application for the intelligence system
 Enhanced: Added Ofsted deep analysis and vacancy display
-FIXED: High contrast black text on white background
 """
 
 import streamlit as st
@@ -40,7 +39,7 @@ processor = get_processor()
 exporter = get_exporter()
 cache = get_cache()
 
-# FIXED CSS - HIGH CONTRAST BLACK TEXT
+# FIXED CSS - Removed black boxes, proper visibility
 st.markdown("""
 <style>
     /* White background everywhere */
@@ -68,7 +67,7 @@ st.markdown("""
     input, textarea, select {
         color: #000000 !important;
         background-color: #FFFFFF !important;
-        border: 2px solid #000000 !important;
+        border: 2px solid #CCCCCC !important;
     }
     
     /* Buttons remain styled */
@@ -89,13 +88,63 @@ st.markdown("""
         font-weight: 600 !important;
     }
     
+    /* FIXED: Expanders - Remove black background */
+    .streamlit-expanderHeader {
+        color: #000000 !important;
+        font-weight: 600 !important;
+        background-color: #F3F4F6 !important;
+    }
+    
+    /* FIXED: Expander content - white background, black text */
+    .streamlit-expanderContent {
+        background-color: #FFFFFF !important;
+        color: #000000 !important;
+    }
+    
+    /* FIXED: All divs inside expanders must be visible */
+    details div {
+        background-color: transparent !important;
+        color: #000000 !important;
+    }
+    
+    /* FIXED: Success/Info/Warning/Error boxes */
+    .stAlert {
+        color: #000000 !important;
+    }
+    
+    [data-baseweb="notification"] {
+        background-color: #FFFFFF !important;
+        color: #000000 !important;
+    }
+    
+    .stSuccess {
+        background-color: #D1FAE5 !important;
+        color: #065F46 !important;
+    }
+    
+    .stInfo {
+        background-color: #DBEAFE !important;
+        color: #1E40AF !important;
+    }
+    
+    .stWarning {
+        background-color: #FEF3C7 !important;
+        color: #92400E !important;
+    }
+    
+    .stError {
+        background-color: #FEE2E2 !important;
+        color: #991B1B !important;
+    }
+    
     /* Contact cards */
     .contact-card {
-        background-color: #F3F4F6 !important;
+        background-color: #F9FAFB !important;
         padding: 1rem;
         border-radius: 0.5rem;
         margin-bottom: 1rem;
-        border: 1px solid #D1D5DB;
+        border: 1px solid #E5E7EB;
+        color: #000000 !important;
     }
     
     /* Competitor badges */
@@ -141,18 +190,6 @@ st.markdown("""
     .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
         color: #000000 !important;
         border-bottom: 2px solid #FF4B4B !important;
-    }
-    
-    /* Expanders */
-    .streamlit-expanderHeader {
-        color: #000000 !important;
-        font-weight: 600 !important;
-        background-color: #F3F4F6 !important;
-    }
-    
-    /* Info/Warning/Error boxes */
-    .stAlert {
-        color: #000000 !important;
     }
     
     /* Tables */
@@ -267,9 +304,9 @@ def display_contacts(contacts):
                 with col1:
                     st.write(f"**{contact.full_name}**")
                     if contact.email:
-                        st.write(f"{contact.email}")
+                        st.write(f"📧 {contact.email}")
                     if contact.phone:
-                        st.write(f"{contact.phone}")
+                        st.write(f"📞 {contact.phone}")
                 
                 with col2:
                     st.markdown(
