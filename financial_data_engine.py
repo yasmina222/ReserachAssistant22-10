@@ -1,397 +1,262 @@
 """
-Protocol Education CI System - Financial Data Engine (SIMPLIFIED)
-Retrieves school financial data from government sources
-SIMPLE VERSION: Find URN, create link, done. No over-engineering.
+Protocol Education CI System - Financial Data Engine
+PROVEN WORKING VERSION from August 2025
+Uses: schools-financial-benchmarking.service.gov.uk (OLD SITE THAT WORKS)
 """
 
 import re
 import logging
 import requests
-import json
 import os
-from typing import Dict, Optional, Tuple, List, Any
+from typing import Dict, Optional, List, Any
 from datetime import datetime
 from models import ConversationStarter
-from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
 class FinancialDataEngine:
-    """Retrieves school financial data - SIMPLE approach"""
+    """Retrieves school financial data from government sources"""
     
     def __init__(self, serper_engine):
         """Initialize with existing Serper engine"""
-        self.serper = serper_engine
+        self.serper_engine = serper_engine
         
-        # Get API key
+        # Get ScraperAPI key if available
         try:
             import streamlit as st
             self.scraper_api_key = st.secrets.get('SCRAPER_API_KEY', os.getenv('SCRAPER_API_KEY'))
         except:
             self.scraper_api_key = os.getenv('SCRAPER_API_KEY')
     
-    def get_school_urn(self, school_name: str, location: Optional[str] = None) -> Dict[str, Any]:
+    def get_recruitment_intelligence(self, school_name: str, location: Optional[str] = None) -> Dict[str, Any]:
         """
-        Find school URN - SIMPLE version with multiple search strategies
+        Main entry point - get financial intelligence for a school
+        This is what processor_premium.py calls
         """
-        
-        logger.info(f"🔍 Searching for URN: {school_name}")
-        
-        # Try multiple search strategies
-        strategies = [
-            self._search_gias,
-            self._search_fbit_direct,
-            self._search_general
-        ]
-        
-        for strategy in strategies:
-            result = strategy(school_name, location)
-            if result and result.get('urn'):
-                logger.info(f"✅ Found URN {result['urn']} via {result.get('source', 'search')}")
-                return result
-        
-        logger.warning(f"❌ No URN found for {school_name}")
-        return {
-            'urn': None,
-            'official_name': school_name,
-            'confidence': 0.0,
-            'error': 'Could not find URN'
-        }
-    
-    def _search_gias(self, school_name: str, location: Optional[str]) -> Optional[Dict[str, Any]]:
-        """Search Get Information About Schools"""
-        
-        query = f'"{school_name}" site:get-information-schools.service.gov.uk'
-        if location:
-            query += f' {location}'
-        
-        results = self.serper.search_web(query, num_results=10)
-        return self._extract_urn_from_results(results, school_name)
-    
-    def _search_fbit_direct(self, school_name: str, location: Optional[str]) -> Optional[Dict[str, Any]]:
-        """Search financial benchmarking site directly"""
-        
-        query = f'"{school_name}" site:financial-benchmarking-and-insights-tool.education.gov.uk'
-        if location:
-            query += f' {location}'
-        
-        results = self.serper.search_web(query, num_results=10)
-        
-        # Look for URN in URLs
-        for result in results:
-            url = result.get('url', '')
+        try:
+            logger.info(f"🎯 Getting recruitment intelligence for: {school_name}")
             
-            # Extract URN from URL: /school/{URN}
-            match = re.search(r'/school/(\d{5,7})', url)
-            if match:
-                urn = match.group(1)
+            # Step 1: Find school URN
+            urn_result = self._get_school_urn(school_name, location)
+            
+            if not urn_result.get('urn'):
                 return {
-                    'urn': urn,
-                    'official_name': self._clean_title(result.get('title', school_name)),
-                    'confidence': 0.9,
-                    'source': 'FBIT Direct',
-                    'url': url
+                    'error': 'Could not find school URN',
+                    'urn': None,
+                    'financial': {}
                 }
-        
-        return None
-    
-    def _search_general(self, school_name: str, location: Optional[str]) -> Optional[Dict[str, Any]]:
-        """General Google search"""
-        
-        query = f'"{school_name}" URN school UK'
-        if location:
-            query += f' {location}'
-        
-        results = self.serper.search_web(query, num_results=10)
-        return self._extract_urn_from_results(results, school_name)
-    
-    def _extract_urn_from_results(self, results: List[Dict], school_name: str) -> Optional[Dict[str, Any]]:
-        """Extract URN from search results using pattern matching"""
-        
-        if not results:
-            return None
-        
-        # URN patterns to look for
-        patterns = [
-            r'/Establishments/Establishment/Details/(\d{5,7})',  # GIAS URL
-            r'/school/(\d{5,7})',  # FBIT URL
-            r'URN[:\s]+(\d{5,7})',  # URN: 123456
-            r'establishment.*?(\d{6})',  # General
-        ]
-        
-        found_urns = []
-        
-        for result in results:
-            url = result.get('url', '')
-            title = result.get('title', '')
-            snippet = result.get('snippet', '')
-            full_text = f"{url} {title} {snippet}"
             
-            for pattern in patterns:
-                matches = re.findall(pattern, full_text, re.IGNORECASE)
-                for urn in matches:
-                    if len(urn) >= 5 and len(urn) <= 7:
-                        found_urns.append({
-                            'urn': urn,
-                            'official_name': self._clean_title(title),
-                            'confidence': self._calculate_match(school_name, title),
-                            'source': 'Search Results',
-                            'url': url
-                        })
-        
-        if not found_urns:
-            return None
-        
-        # Return best match by confidence
-        found_urns.sort(key=lambda x: x['confidence'], reverse=True)
-        return found_urns[0]
+            urn = urn_result['urn']
+            logger.info(f"✅ Found URN: {urn}")
+            
+            # Step 2: Get financial data from OLD SITE (the one that works!)
+            financial_data = self._scrape_fbit_data(urn, school_name)
+            
+            # Step 3: Generate conversation starters
+            conversation_starters = self._generate_financial_starters(financial_data, school_name)
+            
+            return {
+                'urn': urn,
+                'financial': financial_data,
+                'conversation_starters': conversation_starters,
+                'source_url': f"https://schools-financial-benchmarking.service.gov.uk/school/{urn}"
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Error getting financial data: {e}")
+            return {
+                'error': str(e),
+                'urn': None,
+                'financial': {}
+            }
     
-    def _clean_title(self, title: str) -> str:
-        """Clean school name from search result title"""
-        # Remove common suffixes
-        title = re.split(r' - URN:| - Get Information| - GOV\.UK| \| ', title)[0]
-        return title.strip()
-    
-    def _calculate_match(self, search_name: str, result_title: str) -> float:
-        """Calculate confidence score"""
-        search_lower = search_name.lower()
-        result_lower = result_title.lower()
-        
-        if search_lower in result_lower or result_lower in search_lower:
-            return 0.9
-        
-        # Word overlap
-        search_words = set(search_lower.split())
-        result_words = set(result_lower.split())
-        common_words = {'school', 'primary', 'secondary', 'academy', 'the', 'and'}
-        search_words -= common_words
-        result_words -= common_words
-        
-        if search_words and result_words:
-            overlap = len(search_words & result_words) / len(search_words)
-            return 0.5 + (overlap * 0.4)
-        
-        return 0.5
-    
-    def get_financial_data(self, urn: str, entity_name: str = None, is_trust: bool = False) -> Dict[str, Any]:
+    def _get_school_urn(self, school_name: str, location: Optional[str] = None) -> Dict[str, Any]:
         """
-        Get financial data for a URN
-        SIMPLE: Always creates link, optionally tries to extract data
+        Find school URN using Serper API to search government database
+        """
+        try:
+            # Build search query for GIAS
+            query_parts = [f'"{school_name}"']
+            if location:
+                query_parts.append(location)
+            query_parts.append("site:get-information-schools.service.gov.uk URN")
+            
+            search_query = " ".join(query_parts)
+            logger.info(f"🔍 Searching for URN: {search_query}")
+            
+            # Search using Serper
+            results = self.serper_engine.search_web(search_query, num_results=5)
+            
+            # Extract URN from results
+            for result in results:
+                snippet = result.get('snippet', '')
+                link = result.get('link', '')
+                title = result.get('title', '')
+                
+                # Try to extract URN from URL (most reliable)
+                urn_match = re.search(r'/Details/(\d{5,7})', link)
+                if urn_match:
+                    return {
+                        'urn': urn_match.group(1),
+                        'official_name': self._extract_school_name(title),
+                        'confidence': 0.95
+                    }
+                
+                # Try to extract from snippet
+                urn_match = re.search(r'URN[:\s]+(\d{5,7})', snippet)
+                if urn_match:
+                    return {
+                        'urn': urn_match.group(1),
+                        'official_name': self._extract_school_name(title),
+                        'confidence': 0.85
+                    }
+            
+            # Fallback: Try searching the OLD financial site directly
+            logger.info("🔍 Trying OLD financial benchmarking site")
+            fallback_query = f'"{school_name}" site:schools-financial-benchmarking.service.gov.uk'
+            if location:
+                fallback_query += f' {location}'
+            
+            results = self.serper_engine.search_web(fallback_query, num_results=3)
+            
+            for result in results:
+                link = result.get('link', '')
+                # Extract URN from old site URL: /school/123456
+                urn_match = re.search(r'/school/(\d{5,7})', link)
+                if urn_match:
+                    return {
+                        'urn': urn_match.group(1),
+                        'official_name': self._extract_school_name(result.get('title', '')),
+                        'confidence': 0.8
+                    }
+            
+            return {'urn': None, 'confidence': 0.0}
+            
+        except Exception as e:
+            logger.error(f"Error finding URN: {e}")
+            return {'urn': None, 'error': str(e)}
+    
+    def _scrape_fbit_data(self, urn: str, school_name: str) -> Dict[str, Any]:
+        """
+        Get financial data from OLD government site (schools-financial-benchmarking.service.gov.uk)
+        This is the site that actually works!
         """
         
-        logger.info(f"💰 Getting financial data for URN {urn}")
-        
-        # ALWAYS create the link - this is the critical part
+        # ALWAYS create the link first
         financial_data = {
             'urn': urn,
-            'entity_name': entity_name,
-            'entity_type': 'Trust' if is_trust else 'School',
-            'source_url': f"https://financial-benchmarking-and-insights-tool.education.gov.uk/school/{urn}",
+            'school_name': school_name,
+            'source_url': f"https://schools-financial-benchmarking.service.gov.uk/school/{urn}",
             'extracted_date': datetime.now().isoformat()
         }
         
-        # Try to extract actual data (optional - don't fail if this doesn't work)
-        try:
-            html_content = self._fetch_page(urn)
-            if html_content:
-                extracted_data = self._parse_financial_page(html_content)
-                financial_data.update(extracted_data)
-                financial_data['data_extracted'] = True
-            else:
-                financial_data['data_extracted'] = False
-                financial_data['note'] = 'Click link to view financial data'
-        except Exception as e:
-            logger.warning(f"Could not extract data: {e}")
-            financial_data['data_extracted'] = False
-            financial_data['note'] = 'Click link to view financial data'
+        # Try to search for specific data points
+        search_queries = [
+            f'site:schools-financial-benchmarking.service.gov.uk/school/{urn} "Teaching and Teaching support staff" "per pupil"',
+            f'site:schools-financial-benchmarking.service.gov.uk/school/{urn} "In year balance"',
+            f'site:schools-financial-benchmarking.service.gov.uk/school/{urn} "Administrative supplies" "per pupil"',
+            f'site:schools-financial-benchmarking.service.gov.uk/school/{urn} "Supply staff costs"'
+        ]
         
+        all_content = ""
+        for query in search_queries[:2]:  # Just try first 2 to save API calls
+            try:
+                results = self.serper_engine.search_web(query, num_results=2)
+                for result in results:
+                    all_content += result.get('snippet', '') + " "
+            except Exception as e:
+                logger.warning(f"Search failed: {e}")
+        
+        # Extract data from search results
+        if all_content:
+            # Teaching staff per pupil
+            teaching_match = re.search(r'Teaching.*?£([\d,]+)\s*per pupil', all_content, re.IGNORECASE)
+            if teaching_match:
+                financial_data['teaching_staff_per_pupil'] = int(teaching_match.group(1).replace(',', ''))
+            
+            # In year balance
+            balance_match = re.search(r'In year balance.*?[−-]?£([\d,]+)', all_content, re.IGNORECASE | re.DOTALL)
+            if balance_match:
+                amount = int(balance_match.group(1).replace(',', ''))
+                # Check if negative
+                if '−' in balance_match.group(0) or 'deficit' in balance_match.group(0).lower():
+                    amount = -amount
+                financial_data['in_year_balance'] = amount
+            
+            # Administrative supplies
+            admin_match = re.search(r'Administrative supplies.*?£([\d,]+)\s*per pupil', all_content, re.IGNORECASE)
+            if admin_match:
+                financial_data['admin_supplies_per_pupil'] = int(admin_match.group(1).replace(',', ''))
+            
+            # Supply staff costs
+            supply_match = re.search(r'Supply staff.*?£([\d,]+)', all_content, re.IGNORECASE)
+            if supply_match:
+                financial_data['supply_staff_costs'] = int(supply_match.group(1).replace(',', ''))
+        
+        logger.info(f"📊 Extracted financial data: {financial_data}")
         return financial_data
     
-    def _fetch_page(self, urn: str) -> Optional[str]:
-        """Try to fetch the page with ScraperAPI"""
+    def _generate_financial_starters(self, financial_data: Dict, school_name: str) -> List[str]:
+        """Generate conversation starters based on financial data"""
+        starters = []
         
-        if not self.scraper_api_key:
-            logger.warning("No ScraperAPI key - skipping data extraction")
-            return None
-        
-        url = f"https://financial-benchmarking-and-insights-tool.education.gov.uk/school/{urn}"
-        
-        params = {
-            'api_key': self.scraper_api_key,
-            'url': url,
-            'render': 'true',
-            'country_code': 'gb'
-        }
-        
-        try:
-            response = requests.get('http://api.scraperapi.com', params=params, timeout=30)
-            if response.status_code == 200 and 'In year balance' in response.text:
-                return response.text
-        except Exception as e:
-            logger.warning(f"ScraperAPI failed: {e}")
-        
-        return None
-    
-    def _parse_financial_page(self, html: str) -> Dict[str, Any]:
-        """Parse financial data from HTML"""
-        
-        data = {}
-        soup = BeautifulSoup(html, 'html.parser')
-        
-        # Extract headline figures
-        headline_figures = soup.find_all('li', class_='app-headline-figures')
-        for figure in headline_figures:
-            label = figure.find('p', class_='govuk-body-l govuk-!-font-weight-bold')
-            value = figure.find_all('p', class_='govuk-body-l govuk-!-margin-bottom-2')
-            
-            if label and value:
-                label_text = label.get_text(strip=True).lower()
-                value_text = value[-1].get_text(strip=True) if value else ''
-                
-                # Extract amount
-                value_match = re.search(r'[-−]?£([\d,]+)', value_text)
-                if value_match:
-                    amount = int(value_match.group(1).replace(',', ''))
-                    if '-' in value_text or '−' in value_text:
-                        amount = -amount
-                    
-                    if 'in year balance' in label_text:
-                        data['in_year_balance'] = amount
-                    elif 'revenue reserve' in label_text:
-                        data['revenue_reserve'] = amount
-        
-        # Extract spending per pupil
-        priority_wrappers = soup.find_all('div', class_='priority-wrapper')
-        for wrapper in priority_wrappers:
-            category_elem = wrapper.find('h4', class_='govuk-heading-s')
-            if not category_elem:
-                continue
-            
-            category = category_elem.get_text(strip=True)
-            priority_elem = wrapper.find('p', class_='priority')
-            if not priority_elem:
-                continue
-            
-            text = priority_elem.get_text(strip=True)
-            
-            # Per pupil spending
-            amount_match = re.search(r'Spends\s+£([\d,]+)\s+per\s+pupil', text)
-            if amount_match:
-                amount = int(amount_match.group(1).replace(',', ''))
-                
-                if 'Teaching' in category and 'staff' in category:
-                    data['teaching_staff_per_pupil'] = amount
-                elif 'Administrative' in category:
-                    data['admin_supplies_per_pupil'] = amount
-        
-        return data
-    
-    def get_recruitment_intelligence(self, school_name: str, location: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Complete recruitment intelligence - SIMPLE version
-        """
-        
-        logger.info(f"🎯 Getting intelligence for {school_name}")
-        
-        # Step 1: Find URN
-        urn_result = self.get_school_urn(school_name, location)
-        
-        if not urn_result.get('urn'):
-            return {
-                'error': 'Could not find school URN',
-                'school_searched': school_name,
-                'message': 'Try using the full official school name'
-            }
-        
-        # Step 2: Get financial data (with link)
-        financial_data = self.get_financial_data(
-            urn_result['urn'],
-            urn_result['official_name'],
-            False
+        # Always include link to financial data
+        starters.append(
+            f"I can see {school_name}'s financial data on the government's benchmarking tool. "
+            "This provides valuable insights into spending patterns. Protocol Education can help "
+            "optimize your recruitment and supply staff costs - would you like to discuss this?"
         )
         
-        # Step 3: Generate insights
-        insights = self._generate_insights(financial_data)
-        
-        # Step 4: Generate conversation starters
-        conversations = self._generate_conversations(financial_data)
-        
-        return {
-            'school_searched': school_name,
-            'entity_found': {
-                'name': urn_result['official_name'],
-                'type': 'School',
-                'urn': urn_result['urn'],
-                'confidence': urn_result['confidence']
-            },
-            'financial': financial_data,
-            'insights': insights,
-            'conversation_starters': conversations
-        }
-    
-    def _generate_insights(self, financial_data: Dict) -> List[str]:
-        """Generate insights from financial data"""
-        
-        insights = []
-        
-        if not financial_data.get('data_extracted'):
-            insights.append("Click the link above to view detailed financial data on the government website")
-            return insights
-        
+        # Add specific insights if we have the data
         if 'in_year_balance' in financial_data:
             balance = financial_data['in_year_balance']
             if balance < 0:
-                insights.append(f"School has a deficit of £{abs(balance):,}")
+                starters.append(
+                    f"I noticed your school is managing a deficit of £{abs(balance):,}. "
+                    "Many schools find that partnering with a reliable recruitment agency helps "
+                    "reduce costs while maintaining quality. Shall we explore how Protocol can help?"
+                )
             else:
-                insights.append(f"School has a surplus of £{balance:,}")
-        
-        if 'revenue_reserve' in financial_data:
-            reserve = financial_data['revenue_reserve']
-            insights.append(f"Revenue reserve: £{reserve:,}")
+                starters.append(
+                    f"Your school has a healthy surplus of £{balance:,}. This is a great position "
+                    "to be in - Protocol Education can help you maintain this through cost-effective "
+                    "recruitment solutions."
+                )
         
         if 'teaching_staff_per_pupil' in financial_data:
             teaching = financial_data['teaching_staff_per_pupil']
-            insights.append(f"Teaching staff costs: £{teaching:,} per pupil")
+            starters.append(
+                f"With teaching costs at £{teaching:,} per pupil, ensuring value in recruitment "
+                "is essential. Protocol's quality guarantee ensures you get excellent teachers "
+                "at competitive rates - shall we discuss your current recruitment challenges?"
+            )
         
-        return insights
-    
-    def _generate_conversations(self, financial_data: Dict) -> List[str]:
-        """Generate conversation starters"""
-        
-        starters = []
-        
-        # Always mention the financial data is available
-        starters.append(
-            "I can see your school's financial data is publicly available. "
-            "Protocol Education can help optimize your recruitment and supply staff costs. "
-            "Would you like to discuss how we can support your budget planning?"
-        )
-        
-        # Add specific starters if we have data
-        if financial_data.get('data_extracted'):
-            if 'in_year_balance' in financial_data:
-                balance = financial_data['in_year_balance']
-                if balance < 0:
-                    starters.append(
-                        f"I noticed your school is managing a deficit of £{abs(balance):,}. "
-                        "Many schools in this position find that optimizing recruitment costs "
-                        "through a reliable agency partner makes a significant difference. "
-                        "Shall we explore how Protocol Education could help?"
-                    )
+        if 'supply_staff_costs' in financial_data:
+            supply = financial_data['supply_staff_costs']
+            starters.append(
+                f"Your supply staff costs of £{supply:,} suggest there's opportunity to optimize. "
+                "Protocol specializes in providing reliable supply teachers at competitive rates - "
+                "would you like to see how we can help reduce these costs?"
+            )
         
         return starters
+    
+    def _extract_school_name(self, title: str) -> str:
+        """Extract clean school name from search result title"""
+        # Remove common suffixes
+        name = re.split(r' - URN:| - Get Information| - GOV\.UK| \| ', title)[0]
+        return name.strip()
 
 
 def enhance_school_with_financial_data(intel, serper_engine):
     """
     Add financial data to existing school intelligence
-    SIMPLE: Just adds the link and any extractable data
+    Called from processor_premium.py
     """
-    
     try:
         financial_engine = FinancialDataEngine(serper_engine)
         
-        logger.info(f"🏦 Getting financial data for {intel.school_name}")
+        logger.info(f"🏦 Enhancing {intel.school_name} with financial data")
         
         financial_intel = financial_engine.get_recruitment_intelligence(
             intel.school_name,
@@ -404,26 +269,21 @@ def enhance_school_with_financial_data(intel, serper_engine):
                 for starter in financial_intel['conversation_starters']:
                     intel.conversation_starters.append(
                         ConversationStarter(
-                            topic="Financial Intelligence",
+                            topic="Recruitment Costs",
                             detail=starter,
-                            source_url=financial_intel.get('financial', {}).get('source_url', ''),
-                            relevance_score=0.85
+                            source_url=financial_intel.get('source_url', ''),
+                            relevance_score=0.9
                         )
                     )
             
-            # Store financial data (includes the link)
+            # Store financial data
             intel.financial_data = financial_intel
             
-            logger.info(f"✅ Added financial data for {intel.school_name}")
+            logger.info(f"✅ Successfully enhanced {intel.school_name} with financial data")
         else:
-            logger.warning(f"⚠️ Could not get financial data: {financial_intel.get('error')}")
-            intel.financial_data = {
-                'error': financial_intel.get('error'),
-                'message': financial_intel.get('message')
-            }
+            logger.warning(f"⚠️ Could not get financial data for {intel.school_name}: {financial_intel.get('error')}")
     
     except Exception as e:
-        logger.error(f"❌ Error getting financial data: {e}")
-        intel.financial_data = {'error': str(e)}
+        logger.error(f"❌ Error enhancing school with financial data: {e}")
     
     return intel
