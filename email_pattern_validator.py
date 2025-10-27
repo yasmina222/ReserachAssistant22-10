@@ -1,6 +1,7 @@
 """
-Protocol Education Research Assistant - Email Pattern Validator
+Protocol Education Research Assistant - Email Pattern Validator FIXED
 Detects email patterns from known contacts and generates emails for others
+CRITICAL FIX: Added error handling for invalid email formats
 """
 
 import re
@@ -43,26 +44,43 @@ class EmailPatternValidator:
         pattern_scores = {}
         
         for contact in known_contacts:
-            email = contact.get('email', '').lower()
-            first = contact.get('first_name', '').lower()
-            last = contact.get('last_name', '').lower()
+            email = contact.get('email', '').lower().strip()
+            first = contact.get('first_name', '').lower().strip()
+            last = contact.get('last_name', '').lower().strip()
             
+            # CRITICAL FIX: Validate email format before processing
             if not email or '@' not in email or not first or not last:
+                logger.debug(f"Skipping invalid contact data: email={email}, first={first}, last={last}")
+                continue
+            
+            # CRITICAL FIX: Validate email has exactly one @
+            if email.count('@') != 1:
+                logger.debug(f"Skipping malformed email: {email}")
                 continue
                 
-            local, domain = email.split('@')
-            
-            # Test each pattern
-            for pattern in self.common_patterns:
-                generated = self._generate_email(pattern, first, last, domain)
-                if generated == email:
-                    pattern_scores[pattern] = pattern_scores.get(pattern, 0) + 1
-                    logger.info(f"Pattern match: {pattern} for {email}")
+            try:
+                local, domain = email.split('@')
+                
+                # Validate we got valid parts
+                if not local or not domain:
+                    logger.debug(f"Invalid email parts: local={local}, domain={domain}")
+                    continue
+                
+                # Test each pattern
+                for pattern in self.common_patterns:
+                    generated = self._generate_email(pattern, first, last, domain)
+                    if generated == email:
+                        pattern_scores[pattern] = pattern_scores.get(pattern, 0) + 1
+                        logger.info(f"Pattern match: {pattern} for {email}")
+                        
+            except ValueError as e:
+                logger.warning(f"Error processing email {email}: {e}")
+                continue
         
         # Return the most common pattern
         if pattern_scores:
             best_pattern = max(pattern_scores.items(), key=lambda x: x[1])[0]
-            logger.info(f"Detected pattern: {best_pattern}")
+            logger.info(f"Detected pattern: {best_pattern} (matched {pattern_scores[best_pattern]} times)")
             return best_pattern
             
         return None
@@ -95,7 +113,7 @@ class EmailPatternValidator:
         last_name = name_parts[-1]
         
         # If we have a known email, validate it
-        if known_email:
+        if known_email and known_email != 'Not found':
             if self._is_valid_email(known_email):
                 return {
                     'email': known_email,
@@ -156,6 +174,10 @@ class EmailPatternValidator:
     
     def _is_valid_email(self, email: str) -> bool:
         """Check if email format is valid"""
+        if not email or not isinstance(email, str):
+            return False
+            
+        # Basic email regex
         pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
         return bool(re.match(pattern, email))
     
@@ -163,21 +185,31 @@ class EmailPatternValidator:
         """Check if generated email looks reasonable"""
         if not self._is_valid_email(email):
             return False
-            
-        local, domain = email.split('@')
         
-        # Check local part
-        if len(local) < 2 or len(local) > 30:
+        # Additional check for @
+        if '@' not in email or email.count('@') != 1:
             return False
             
-        # No double dots
-        if '..' in local:
-            return False
+        try:
+            local, domain = email.split('@')
             
-        return True
+            # Check local part
+            if len(local) < 2 or len(local) > 30:
+                return False
+                
+            # No double dots
+            if '..' in local:
+                return False
+                
+            return True
+        except:
+            return False
     
     def extract_domain_from_website(self, website_url: str) -> str:
         """Extract email domain from website URL"""
+        
+        if not website_url or website_url == 'Not found':
+            return 'school.sch.uk'  # Generic fallback
         
         # Remove protocol
         domain = website_url.lower()
@@ -221,27 +253,49 @@ def enhance_contacts_with_emails(contacts: List, website_url: str,
     # Detect pattern from known emails if available
     pattern = None
     if known_emails:
-        pattern = validator.detect_pattern(known_emails)
-        logger.info(f"Detected email pattern: {pattern}")
+        # Filter out invalid emails before pattern detection
+        valid_known_emails = [
+            e for e in known_emails 
+            if e.get('email') and '@' in str(e.get('email', ''))
+        ]
+        if valid_known_emails:
+            pattern = validator.detect_pattern(valid_known_emails)
+            logger.info(f"Detected email pattern: {pattern}")
     
     # Enhance each contact
     for contact in contacts:
-        if not contact.email or contact.email == 'Not found':
-            # Generate email
-            result = validator.validate_and_generate(
-                contact.full_name,
-                pattern,
-                domain,
-                contact.email if contact.email != 'Not found' else None
-            )
+        # Skip if contact already has a valid email
+        current_email = getattr(contact, 'email', None)
+        if current_email and current_email != 'Not found' and '@' in current_email:
+            logger.debug(f"Contact {contact.full_name} already has valid email: {current_email}")
+            continue
             
-            contact.email = result['email']
-            contact.notes = f"Email {result['method']}: {result['pattern']}" if result['pattern'] else f"Email {result['method']}"
-            
-            # Adjust confidence based on email generation confidence
+        # Generate email
+        result = validator.validate_and_generate(
+            contact.full_name,
+            pattern,
+            domain,
+            current_email
+        )
+        
+        contact.email = result['email']
+        
+        # Add generation method to notes
+        existing_notes = getattr(contact, 'notes', '') or ''
+        generation_note = f"Email {result['method']}"
+        if result['pattern']:
+            generation_note += f": {result['pattern']}"
+        
+        if existing_notes:
+            contact.notes = f"{existing_notes}; {generation_note}"
+        else:
+            contact.notes = generation_note
+        
+        # Adjust confidence based on email generation confidence
+        if hasattr(contact, 'confidence_score'):
             contact.confidence_score = min(contact.confidence_score, result['confidence'])
-            
-            logger.info(f"Generated email for {contact.full_name}: {contact.email} (confidence: {result['confidence']})")
+        
+        logger.info(f"Generated email for {contact.full_name}: {contact.email} (confidence: {result['confidence']:.0%})")
     
     return contacts
 
@@ -267,3 +321,10 @@ if __name__ == "__main__":
         "school.sch.uk"
     )
     print(f"Generated: {result}")
+    
+    # Test with invalid email (bug that was crashing)
+    invalid_known = [
+        {'email': 'notanemail', 'first_name': 'Test', 'last_name': 'User'}
+    ]
+    pattern = validator.detect_pattern(invalid_known)
+    print(f"Pattern from invalid: {pattern}")  # Should handle gracefully
