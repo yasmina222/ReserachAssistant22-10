@@ -313,7 +313,7 @@ def display_school_intelligence(intel):
     
     # Tab 4: Financial Analysis
     with tabs[3]:
-        display_financial_analysis(intel)
+        display_financial_data(intel)
     
     # Tab 5: Ofsted Analysis
     with tabs[4]:
@@ -501,60 +501,177 @@ def display_competitors(intel):
                 st.write(str(comp))
     else:
         st.success("✅ No competitor agencies detected")
-
-def display_financial_analysis(intel):
-    """Display financial analysis - AUGUST WORKING VERSION - SIMPLE LINK ONLY"""
+        
+def display_financial_data(intel):
+    """Display financial data and recruitment costs - NOW TRUST-AWARE"""
     
     if hasattr(intel, 'financial_data') and intel.financial_data:
+        financial = intel.financial_data
         
-        if 'url' in intel.financial_data:
-            financial_url = intel.financial_data['url']
-            urn = intel.financial_data.get('urn', 'Unknown')
-            school_name = intel.financial_data.get('school_name', intel.school_name)
-            entity_type = intel.financial_data.get('entity_type', 'School')
+        if financial.get('error'):
+            st.warning(f"Could not retrieve financial data: {financial['error']}")
+            return
+        
+        # Entity info (School or Trust)
+        if 'entity_found' in financial:
+            entity = financial['entity_found']
             
-            st.subheader("📊 School Financial Data")
+            # Show if we found trust-level data
+            if entity['type'] == 'Trust':
+                st.info(f"🏢 Found trust-level financial data for **{entity['name']}** which manages {entity.get('schools_in_trust', 'multiple')} schools including {financial['school_searched']}")
             
-            st.success(f"✅ Financial data available")
-            
-            # Display school info in columns
             col1, col2, col3 = st.columns(3)
-            
             with col1:
-                st.write(f"**Entity:** {school_name}")
+                st.write(f"**Entity:** {entity['name']}")
+                st.write(f"**Type:** {entity['type']}")
             with col2:
-                st.write(f"**Type:** {entity_type}")
+                st.write(f"**URN:** {entity['urn']}")
+                st.write(f"**Schools:** {entity.get('schools_in_trust', 'N/A')}")
             with col3:
-                st.write(f"**URN:** {urn}")
-            
-            st.write("---")
-            
-            # THE MAIN CLICKABLE LINK - EXACTLY AS AUGUST VERSION
-            st.markdown(f"### [FBIT Government Database]({financial_url})")
-            
-            st.caption("Click above to view detailed financial data including:")
-            st.caption("• Teaching staff costs per pupil")
-            st.caption("• Administrative spending")
-            st.caption("• Revenue reserves and in-year balance")
-            st.caption("• Spending priorities and benchmarking")
-            
-            st.write("---")
-            
-            # Show the direct URL for reference
-            with st.expander("Show direct URL"):
-                st.code(financial_url)
+                st.write(f"**Match Confidence:** {entity.get('confidence', 0):.0%}")
+                if entity['type'] == 'Trust':
+                    st.write("**Economies of Scale:** ✅")
         
-        else:
-            # This should never happen now
-            st.warning("⚠️ Financial data structure not recognized")
-            st.write("**Available keys:**", list(intel.financial_data.keys()))
-    
+        st.divider()
+        
+        # Financial data
+        if 'financial' in financial and financial['financial']:
+            fin_data = financial['financial']
+            
+            # Recruitment cost estimates (PROMINENT DISPLAY)
+            if 'recruitment_estimates' in fin_data:
+                st.subheader("🎯 Annual Recruitment Costs")
+                
+                estimates = fin_data['recruitment_estimates']
+                
+                if 'total_trust' in estimates:  # Trust-level data
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        st.metric(
+                            "Trust Total",
+                            f"£{estimates['total_trust']:,}",
+                            help="Total recruitment spend across all schools"
+                        )
+                    with col2:
+                        st.metric(
+                            "Per School Average",
+                            f"£{estimates['per_school_avg']:,}",
+                            help="Average recruitment cost per school in trust"
+                        )
+                    with col3:
+                        st.metric(
+                            "Savings vs Independent",
+                            estimates['economies_of_scale_saving'],
+                            help="Cost savings from trust-wide recruitment"
+                        )
+                    
+                    if estimates.get('explanation'):
+                        st.success(f"💡 {estimates['explanation']}")
+                
+                else:  # School-level data
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        st.metric("Low Estimate", f"£{estimates['low']:,}")
+                    with col2:
+                        st.metric("**Best Estimate**", f"£{estimates['midpoint']:,}")
+                    with col3:
+                        st.metric("High Estimate", f"£{estimates['high']:,}")
+            
+            # Supply costs
+            if 'supply_staff_costs' in fin_data or (fin_data.get('per_school_estimates', {}).get('avg_supply')):
+                st.subheader("💰 Supply Staff Costs")
+                
+                if 'per_school_estimates' in fin_data and fin_data['per_school_estimates'].get('avg_supply'):
+                    # Trust breakdown
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.metric(
+                            "Trust Total Supply Costs",
+                            f"£{fin_data.get('supply_staff_costs', 0):,}"
+                        )
+                    with col2:
+                        st.metric(
+                            "Average Per School",
+                            f"£{fin_data['per_school_estimates']['avg_supply']:,}"
+                        )
+                else:
+                    # Single school
+                    st.metric(
+                        "Annual Supply Costs",
+                        f"£{fin_data.get('supply_staff_costs', 0):,}"
+                    )
+            
+            # Total opportunity
+            if 'recruitment_estimates' in fin_data and 'supply_staff_costs' in fin_data:
+                st.subheader("📊 Total Opportunity")
+                
+                if 'total_trust' in fin_data['recruitment_estimates']:
+                    total = fin_data['recruitment_estimates']['total_trust'] + fin_data.get('supply_staff_costs', 0)
+                    st.metric(
+                        "Total Trust Temporary Staffing Spend",
+                        f"£{total:,}",
+                        help="Combined recruitment + supply costs across trust"
+                    )
+                else:
+                    total = fin_data['recruitment_estimates']['midpoint'] + fin_data.get('supply_staff_costs', 0)
+                    st.metric(
+                        "Total Temporary Staffing Spend",
+                        f"£{total:,}",
+                        help="Combined recruitment + supply costs"
+                    )
+            
+            # Other financial metrics in expandable section
+            with st.expander("📈 Additional Financial Data"):
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    if 'teaching_staff_per_pupil' in fin_data:
+                        st.metric(
+                            "Teaching Staff Cost",
+                            f"£{fin_data['teaching_staff_per_pupil']:,}/pupil"
+                        )
+                    
+                    if 'total_expenditure' in fin_data:
+                        st.metric(
+                            "Total Expenditure",
+                            f"£{fin_data['total_expenditure']:,}"
+                        )
+                
+                with col2:
+                    if 'admin_supplies_per_pupil' in fin_data:
+                        st.metric(
+                            "Admin Supplies",
+                            f"£{fin_data['admin_supplies_per_pupil']:,}/pupil"
+                        )
+                    
+                    if 'indirect_employee_expenses' in fin_data:
+                        st.metric(
+                            "Indirect Employee Expenses",
+                            f"£{fin_data['indirect_employee_expenses']:,}"
+                        )
+            
+            # Data source
+            if 'source_url' in fin_data:
+                st.caption(f"Data source: [FBIT Government Database]({fin_data['source_url']})")
+                st.caption(f"Extracted: {fin_data.get('extracted_date', 'N/A')}")
+        
+        # Insights
+        if 'insights' in financial and financial['insights']:
+            st.subheader("💡 Key Insights")
+            for insight in financial['insights']:
+                st.write(f"• {insight}")
+        
+        # Conversation starters specific to costs
+        if 'conversation_starters' in financial and financial['conversation_starters']:
+            st.subheader("💬 Cost-Focused Conversation Starters")
+            for i, starter in enumerate(financial['conversation_starters'], 1):
+                with st.expander(f"Talking Point {i}"):
+                    st.write(starter)
+        
     else:
-        st.info("💡 No financial data available for this school")
-        st.caption("Financial data may not be available if:")
-        st.caption("• The school's URN could not be found")
-        st.caption("• The school has not published financial data")
-        st.caption("• The school is newly opened")
+        st.info("No financial data available for this school")
         
 def display_ofsted_analysis(intel):
     """Display enhanced Ofsted analysis"""
