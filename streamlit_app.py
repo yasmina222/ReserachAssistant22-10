@@ -502,9 +502,6 @@ def display_competitors(intel):
     else:
         st.success("✅ No competitor agencies detected")
 
-Streamlit financial display simple · PY
-Copy
-
 def display_financial_analysis(intel):
     """Display financial analysis data - SIMPLIFIED to just show the link"""
     
@@ -771,4 +768,4 @@ elif operation_mode == "Borough Sweep":
 
 if __name__ == "__main__":
     if not os.path.exists('.env'):
-        st.warning(".env file not found"
+        st.warning(".env file not found")
