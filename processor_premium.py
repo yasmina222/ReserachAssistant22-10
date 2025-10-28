@@ -1,7 +1,6 @@
 """
-Protocol Education CI System - Premium Processor (ENHANCED)
-Integrates the premium AI engine with existing Streamlit app
-Enhanced: Added Ofsted analysis and vacancy detection
+Protocol Education CI System - Premium Processor (FIXED SERIALIZATION)
+CRITICAL FIX: Proper serialization of ConversationStarter objects for caching
 """
 
 import logging
@@ -93,13 +92,18 @@ class PremiumSchoolProcessor:
             reverse=True
         )
         
-        # Cache results
-        self.cache.set(
-            school_name, 
-            'full_intelligence',
-            self._serialize_intelligence(intel),
-            research_result.get('sources', [])
-        )
+        # Cache results WITH PROPER SERIALIZATION
+        try:
+            serialized = self._serialize_intelligence(intel)
+            self.cache.set(
+                school_name, 
+                'full_intelligence',
+                serialized,
+                research_result.get('sources', [])
+            )
+            logger.info(f"✅ Successfully cached data for {school_name}")
+        except Exception as e:
+            logger.error(f"❌ Error caching data for {school_name}: {e}")
         
         logger.info(f"Completed {school_name} in {intel.processing_time:.2f}s")
         return intel
@@ -201,7 +205,7 @@ class PremiumSchoolProcessor:
         
         # Map AI roles to our ContactType enum
         role_mapping = {
-            'Headteacher/Principal': ContactType.DEPUTY_HEAD,  # Often the key decision maker
+            'Headteacher/Principal': ContactType.DEPUTY_HEAD,
             'Deputy Headteacher': ContactType.DEPUTY_HEAD,
             'Assistant Headteacher': ContactType.ASSISTANT_HEAD,
             'Business Manager': ContactType.BUSINESS_MANAGER,
@@ -307,7 +311,6 @@ class PremiumSchoolProcessor:
         logger.info(f"Processing borough: {borough_name}, type: {school_type}")
         
         # For now, use a predefined list - in production, this would search for schools
-        # You could enhance this to use the AI to first get a list of schools
         test_schools = [
             f"Primary School 1 {borough_name}",
             f"Secondary School 1 {borough_name}",
@@ -325,7 +328,35 @@ class PremiumSchoolProcessor:
         return results
     
     def _serialize_intelligence(self, intel: SchoolIntelligence) -> Dict[str, Any]:
-        """Convert SchoolIntelligence to dict for caching"""
+        """
+        Convert SchoolIntelligence to dict for caching
+        CRITICAL FIX: Properly serialize ConversationStarter objects
+        """
+        
+        # CRITICAL: Convert ConversationStarter objects to dicts BEFORE serialization
+        conversation_starters_serialized = []
+        for starter in intel.conversation_starters:
+            if isinstance(starter, ConversationStarter):
+                # Convert ConversationStarter object to dict
+                conversation_starters_serialized.append({
+                    'topic': starter.topic,
+                    'detail': starter.detail,
+                    'source_url': starter.source_url,
+                    'relevance_score': starter.relevance_score,
+                    'date': starter.date.isoformat() if starter.date else None
+                })
+            elif isinstance(starter, dict):
+                # Already a dict
+                conversation_starters_serialized.append(starter)
+            else:
+                # String or other - wrap it
+                conversation_starters_serialized.append({
+                    'topic': 'General',
+                    'detail': str(starter),
+                    'source_url': '',
+                    'relevance_score': 0.7,
+                    'date': None
+                })
         
         serialized = {
             'school_name': intel.school_name,
@@ -352,14 +383,8 @@ class PremiumSchoolProcessor:
             ],
             'ofsted_rating': intel.ofsted_rating,
             'ofsted_date': intel.ofsted_date.isoformat() if intel.ofsted_date else None,
-            'conversation_starters': [
-                {
-                    'topic': s.topic,
-                    'detail': s.detail,
-                    'relevance_score': s.relevance_score
-                }
-                for s in intel.conversation_starters
-            ],
+            # CRITICAL FIX: Use the properly serialized conversation starters
+            'conversation_starters': conversation_starters_serialized,
             'data_quality_score': intel.data_quality_score
         }
         
@@ -373,7 +398,6 @@ class PremiumSchoolProcessor:
             
         # Include vacancy data if present
         if hasattr(intel, 'vacancy_data') and intel.vacancy_data:
-            # Serialize vacancy data (excluding objects)
             serialized['vacancy_data'] = {
                 'total_found': intel.vacancy_data['total_found'],
                 'senior_roles': intel.vacancy_data['senior_roles'],
@@ -412,13 +436,22 @@ class PremiumSchoolProcessor:
             )
             intel.competitors.append(competitor)
             
-        # Recreate conversation starters
+        # Recreate conversation starters FROM DICTS
         for starter_data in data.get('conversation_starters', []):
+            # Properly reconstruct ConversationStarter from dict
+            date_obj = None
+            if starter_data.get('date'):
+                try:
+                    date_obj = datetime.fromisoformat(starter_data['date'])
+                except:
+                    pass
+            
             starter = ConversationStarter(
-                topic=starter_data['topic'],
-                detail=starter_data['detail'],
-                source_url='',
-                relevance_score=starter_data.get('relevance_score', 0.7)
+                topic=starter_data.get('topic', 'General'),
+                detail=starter_data.get('detail', ''),
+                source_url=starter_data.get('source_url', ''),
+                relevance_score=starter_data.get('relevance_score', 0.7),
+                date=date_obj
             )
             intel.conversation_starters.append(starter)
         
