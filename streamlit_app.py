@@ -3,6 +3,7 @@ Protocol Education CI System - Streamlit Web Interface
 User-friendly web application for the intelligence system
 Enhanced: Added Ofsted deep analysis and vacancy display
 FIXED: Removed all black boxes and changed button to BLUE
+FIXED: Corrected attribute names to match SchoolIntelligence model
 """
 
 import streamlit as st
@@ -337,25 +338,32 @@ def display_overview(intel):
         st.write(f"**Name:** {intel.school_name}")
         if intel.website:
             st.write(f"**Website:** [{intel.website}]({intel.website})")
-        if intel.phone:
-            st.write(f"**Phone:** {intel.phone}")
+        if intel.phone_main:
+            st.write(f"**Phone:** {intel.phone_main}")
     
     with col2:
         if intel.address:
             st.write(f"**Address:** {intel.address}")
-        if intel.headteacher:
-            st.write(f"**Headteacher:** {intel.headteacher}")
     
     st.divider()
     
-    # Additional context
-    if intel.recent_news:
-        st.subheader("Recent News")
-        for item in intel.recent_news[:3]:
-            with st.expander(item.get('title', 'News Item')):
-                st.write(item.get('summary', ''))
-                if item.get('url'):
-                    st.write(f"[Read more]({item['url']})")
+    # Show recent achievements if available
+    if intel.recent_achievements:
+        st.subheader("Recent Achievements")
+        for achievement in intel.recent_achievements[:3]:
+            st.write(f"✅ {achievement}")
+    
+    # Show upcoming events if available
+    if intel.upcoming_events:
+        st.subheader("Upcoming Events")
+        for event in intel.upcoming_events[:3]:
+            st.write(f"📅 {event}")
+    
+    # Show leadership changes if available
+    if intel.leadership_changes:
+        st.subheader("Leadership Changes")
+        for change in intel.leadership_changes:
+            st.write(f"👤 {change}")
 
 def display_contacts(intel):
     """Display contact information"""
@@ -366,48 +374,43 @@ def display_contacts(intel):
     
     st.write(f"Found {len(intel.contacts)} contacts")
     
-    # Group by contact type
-    leadership = [c for c in intel.contacts if c.contact_type == ContactType.LEADERSHIP]
-    teaching = [c for c in intel.contacts if c.contact_type == ContactType.TEACHING]
-    admin = [c for c in intel.contacts if c.contact_type == ContactType.ADMIN]
-    
-    if leadership:
-        st.subheader("Leadership Team")
-        for contact in leadership:
-            display_contact_card(contact)
-    
-    if teaching:
-        with st.expander(f"Teaching Staff ({len(teaching)})"):
-            for contact in teaching:
-                display_contact_card(contact)
-    
-    if admin:
-        with st.expander(f"Administrative Staff ({len(admin)})"):
-            for contact in admin:
-                display_contact_card(contact)
+    # Display all contacts
+    for contact in intel.contacts:
+        display_contact_card(contact)
 
 def display_contact_card(contact):
     """Display individual contact card"""
     
-    confidence_class = {
-        "high": "confidence-high",
-        "medium": "confidence-medium", 
-        "low": "confidence-low"
-    }.get(contact.confidence.lower(), "")
+    # Determine confidence class based on score
+    if contact.confidence_score >= 0.7:
+        confidence_class = "confidence-high"
+        confidence_text = "High"
+    elif contact.confidence_score >= 0.5:
+        confidence_class = "confidence-medium"
+        confidence_text = "Medium"
+    else:
+        confidence_class = "confidence-low"
+        confidence_text = "Low"
     
     st.markdown(f"""
     <div class="contact-card">
-        <strong>{contact.name}</strong> - {contact.title}<br>
-        <span class="{confidence_class}">Confidence: {contact.confidence}</span>
+        <strong>{contact.full_name}</strong> - {contact.role.value.replace('_', ' ').title()}<br>
+        <span class="{confidence_class}">Confidence: {confidence_text}</span>
     </div>
     """, unsafe_allow_html=True)
     
     if contact.email:
         st.write(f"📧 {contact.email}")
     if contact.phone:
-        st.write(f"📞 {contact.phone}")
-    if contact.linkedin:
-        st.write(f"🔗 [LinkedIn]({contact.linkedin})")
+        phone_display = contact.phone
+        if contact.phone_extension:
+            phone_display += f" ext. {contact.phone_extension}"
+        st.write(f"📞 {phone_display}")
+    
+    if contact.evidence_urls:
+        with st.expander("View Evidence"):
+            for url in contact.evidence_urls[:3]:
+                st.write(f"- {url}")
 
 def display_conversation_starters(intel):
     """Display AI-generated conversation starters"""
@@ -420,11 +423,13 @@ def display_conversation_starters(intel):
     st.write("Use these insights to start meaningful conversations:")
     
     for i, starter in enumerate(intel.conversation_starters, 1):
-        with st.expander(f"Approach {i}: {starter.get('hook', 'Conversation Starter')}"):
-            st.write(f"**Hook:** {starter.get('hook', '')}")
-            st.write(f"**Context:** {starter.get('context', '')}")
-            if starter.get('suggested_opening'):
-                st.write(f"**Opening Line:** *\"{starter['suggested_opening']}\"*")
+        with st.expander(f"Approach {i}: {starter.topic}"):
+            st.write(f"**Topic:** {starter.topic}")
+            st.write(f"**Detail:** {starter.detail}")
+            if starter.source_url:
+                st.write(f"**Source:** {starter.source_url}")
+            if starter.relevance_score:
+                st.write(f"**Relevance:** {starter.relevance_score:.0%}")
 
 def display_competitors(intel):
     """Display competitor information"""
@@ -436,18 +441,36 @@ def display_competitors(intel):
     st.warning(f"⚠️ Found {len(intel.competitors)} competitor agencies")
     
     for comp in intel.competitors:
-        if isinstance(comp, dict):
-            agency = comp.get('agency', 'Unknown')
-            evidence = comp.get('evidence', 'No details')
-            
-            st.markdown(f"""
-            <div style="background-color: #FEE2E2; padding: 1rem; border-radius: 0.5rem; margin-bottom: 1rem;">
-                <span class="competitor-badge">{agency}</span>
-                <p style="color: #000000 !important; margin-top: 0.5rem;">{evidence}</p>
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            st.write(str(comp))
+        st.markdown(f"""
+        <div style="background-color: #FEE2E2; padding: 1rem; border-radius: 0.5rem; margin-bottom: 1rem;">
+            <span class="competitor-badge">{comp.agency_name}</span>
+            <p style="color: #000000 !important; margin-top: 0.5rem;">
+                <strong>Type:</strong> {comp.presence_type}<br>
+                <strong>Confidence:</strong> {comp.confidence_score:.0%}
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        if comp.weaknesses:
+            st.write("**Their Weaknesses:**")
+            for weakness in comp.weaknesses:
+                st.write(f"• {weakness}")
+        
+        if comp.evidence_urls:
+            with st.expander("View Evidence"):
+                for url in comp.evidence_urls[:3]:
+                    st.write(f"- {url}")
+    
+    # Show win-back strategy if available
+    if intel.win_back_strategy:
+        st.subheader("🎯 Win-Back Strategy")
+        st.info(intel.win_back_strategy)
+    
+    # Show Protocol advantages
+    if intel.protocol_advantages:
+        st.subheader("💪 Protocol Education Advantages")
+        for advantage in intel.protocol_advantages:
+            st.write(f"✅ {advantage}")
 
 def display_financial_analysis(intel):
     """Display financial analysis data - SIMPLIFIED to just show the link"""
@@ -557,6 +580,8 @@ def display_ofsted_analysis(intel):
     else:
         if intel.ofsted_rating:
             st.info(f"Ofsted Rating: {intel.ofsted_rating}")
+            if intel.ofsted_date:
+                st.write(f"Inspection Date: {intel.ofsted_date.strftime('%B %Y')}")
 
 def display_vacancies(intel):
     """Display vacancy information"""
