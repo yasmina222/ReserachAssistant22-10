@@ -260,250 +260,194 @@ st.markdown("""
     
     /* Code blocks */
     code {
-        color: #000000 !important;
         background-color: #F3F4F6 !important;
+        color: #000000 !important;
+        padding: 0.2rem 0.4rem;
+        border-radius: 0.25rem;
     }
     
-    pre {
-        color: #000000 !important;
-        background-color: #F3F4F6 !important;
+    /* Progress bar */
+    .stProgress > div > div {
+        background-color: #0066FF !important;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Define all display functions first
 def display_school_intelligence(intel):
-    """Display school intelligence in Streamlit"""
+    """Display comprehensive school intelligence"""
     
     # Header metrics
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric("Data Quality", f"{intel.data_quality_score:.0%}")
+        st.metric("School", intel.school_name)
     with col2:
-        st.metric("Contacts Found", len(intel.contacts))
+        if intel.ofsted_rating:
+            st.metric("Ofsted Rating", intel.ofsted_rating)
+        else:
+            st.metric("Ofsted Rating", "Not Found")
     with col3:
-        st.metric("Competitors", len(intel.competitors))
+        st.metric("Contacts Found", len(intel.contacts))
     with col4:
-        st.metric("Processing Time", f"{intel.processing_time:.1f}s")
-    
-    # School info
-    st.subheader(f"{intel.school_name}")
-    if intel.website:
-        st.write(f"🌐 {intel.website}")
-    if intel.ofsted_rating:
-        st.write(f"⭐ Ofsted: {intel.ofsted_rating}")
+        quality_pct = f"{intel.data_quality_score:.0%}"
+        st.metric("Data Quality", quality_pct)
     
     st.divider()
     
-    # Create tabs
-    tabs = st.tabs(["Conversation Starters", "Contacts", "Competitors", "Financial Analysis", "Ofsted Analysis", "Vacancies"])
+    # Tabs for different sections
+    tabs = st.tabs([
+        "📋 Overview",
+        "👥 Contacts", 
+        "📊 Financial Data",
+        "📖 Ofsted Analysis",
+        "🔍 Vacancies",
+        "⚠️ Competitors",
+        "💬 Conversation Starters"
+    ])
     
-    # Tab 1: Conversation starters
-    with tabs[0]:
-        display_conversation_starters(intel)
+    with tabs[0]:  # Overview
+        display_overview(intel)
     
-    # Tab 2: Contacts
-    with tabs[1]:
+    with tabs[1]:  # Contacts
         display_contacts(intel)
     
-    # Tab 3: Competitors
-    with tabs[2]:
-        display_competitors(intel)
-    
-    # Tab 4: Financial Analysis
-    with tabs[3]:
+    with tabs[2]:  # Financial Data
         display_financial_analysis(intel)
     
-    # Tab 5: Ofsted Analysis
-    with tabs[4]:
+    with tabs[3]:  # Ofsted
         display_ofsted_analysis(intel)
     
-    # Tab 6: Vacancies
-    with tabs[5]:
+    with tabs[4]:  # Vacancies
         display_vacancies(intel)
-
-def display_conversation_starters(intel):
-    """Display AI-generated conversation starters"""
     
-    if intel.conversation_starters:
-        st.info(f"📋 Generated {len(intel.conversation_starters)} conversation starters")
-        
-        for i, starter in enumerate(intel.conversation_starters, 1):
-            with st.expander(f"**Conversation Starter #{i}**", expanded=(i == 1)):
-                # Handle different data structures
-                if isinstance(starter, str):
-                    # If starter is just a string
-                    st.write(starter)
-                    
-                elif hasattr(starter, 'detail'):
-                    # ConversationStarter object from models.py
-                    # Show topic as header if available
-                    if hasattr(starter, 'topic') and starter.topic:
-                        st.markdown(f"**{starter.topic}**")
-                    
-                    # Show the main detail/content
-                    st.write(starter.detail)
-                    
-                    # Show source URL if available
-                    if hasattr(starter, 'source_url') and starter.source_url:
-                        st.write(f"**Source:** {starter.source_url}")
-                    
-                    # Show relevance score if available
-                    if hasattr(starter, 'relevance_score') and starter.relevance_score:
-                        score = starter.relevance_score
-                        if score > 0.8:
-                            confidence_class = "confidence-high"
-                            confidence_label = "HIGH"
-                        elif score > 0.6:
-                            confidence_class = "confidence-medium"
-                            confidence_label = "MEDIUM"
-                        else:
-                            confidence_class = "confidence-low"
-                            confidence_label = "LOW"
-                        
-                        st.markdown(
-                            f'<span class="{confidence_class}">Relevance: {confidence_label} ({score:.0%})</span>',
-                            unsafe_allow_html=True
-                        )
-                    
-                    # Show date if available
-                    if hasattr(starter, 'date') and starter.date:
-                        st.caption(f"Date: {starter.date.strftime('%Y-%m-%d')}")
-                        
-                elif isinstance(starter, dict):
-                    # Dictionary format (fallback)
-                    # Look for text in various keys
-                    text = starter.get('detail') or starter.get('text') or starter.get('starter') or starter.get('content') or str(starter)
-                    st.write(text)
-                    
-                    # Show topic if available
-                    if 'topic' in starter:
-                        st.caption(f"Topic: {starter['topic']}")
-                    
-                    # Show sources if available
-                    sources = starter.get('sources', [])
-                    if sources:
-                        st.write("**Sources:**")
-                        for source in sources:
-                            st.write(f"• {source}")
-                    
-                    # Show relevance/confidence if available
-                    relevance = starter.get('relevance_score') or starter.get('confidence')
-                    if relevance:
-                        st.caption(f"Relevance: {relevance:.0%}")
-                else:
-                    # Fallback: just display whatever it is
-                    st.write(str(starter))
-    else:
-        st.warning("No conversation starters generated")
+    with tabs[5]:  # Competitors
+        display_competitors(intel)
+    
+    with tabs[6]:  # Conversation Starters
+        display_conversation_starters(intel)
+
+def display_overview(intel):
+    """Display school overview information"""
+    
+    st.subheader("School Information")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.write(f"**Name:** {intel.school_name}")
+        if intel.website:
+            st.write(f"**Website:** [{intel.website}]({intel.website})")
+        if intel.phone:
+            st.write(f"**Phone:** {intel.phone}")
+    
+    with col2:
+        if intel.address:
+            st.write(f"**Address:** {intel.address}")
+        if intel.headteacher:
+            st.write(f"**Headteacher:** {intel.headteacher}")
+    
+    st.divider()
+    
+    # Additional context
+    if intel.recent_news:
+        st.subheader("Recent News")
+        for item in intel.recent_news[:3]:
+            with st.expander(item.get('title', 'News Item')):
+                st.write(item.get('summary', ''))
+                if item.get('url'):
+                    st.write(f"[Read more]({item['url']})")
 
 def display_contacts(intel):
     """Display contact information"""
     
-    if intel.contacts:
-        st.success(f"Found {len(intel.contacts)} contacts")
-        
-        for contact in intel.contacts:
-            with st.container():
-                # Handle Contact objects properly
-                if hasattr(contact, 'full_name'):
-                    # Contact object from models.py
-                    name = contact.full_name
-                    role = contact.role.value.replace('_', ' ').title() if hasattr(contact.role, 'value') else str(contact.role)
-                    email = contact.email or 'Not available'
-                    phone = contact.phone or ''
-                    confidence = f"{contact.confidence_score:.0%}" if hasattr(contact, 'confidence_score') else ''
-                    
-                    st.markdown(f"""
-                    <div class="contact-card">
-                        <h4>{name}</h4>
-                        <p><strong>Role:</strong> {role}</p>
-                        <p><strong>Email:</strong> {email}</p>
-                        {f'<p><strong>Phone:</strong> {phone}</p>' if phone else ''}
-                        {f'<p><strong>Confidence:</strong> {confidence}</p>' if confidence else ''}
-                        {f'<p><strong>Notes:</strong> {contact.notes}</p>' if hasattr(contact, 'notes') and contact.notes else ''}
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                elif isinstance(contact, dict):
-                    # Dictionary format (fallback)
-                    name = contact.get('name', contact.get('full_name', 'Unknown'))
-                    role = contact.get('role', 'Unknown')
-                    email = contact.get('email', 'Not available')
-                    phone = contact.get('phone', '')
-                    source = contact.get('source', '')
-                    
-                    st.markdown(f"""
-                    <div class="contact-card">
-                        <h4>{name}</h4>
-                        <p><strong>Role:</strong> {role}</p>
-                        <p><strong>Email:</strong> {email}</p>
-                        {f'<p><strong>Phone:</strong> {phone}</p>' if phone else ''}
-                        {f'<p><strong>Source:</strong> {source}</p>' if source else ''}
-                    </div>
-                    """, unsafe_allow_html=True)
-                else:
-                    st.write(str(contact))
-    else:
-        st.info("No contacts found")
+    if not intel.contacts:
+        st.info("No contacts found for this school")
+        return
+    
+    st.write(f"Found {len(intel.contacts)} contacts")
+    
+    # Group by contact type
+    leadership = [c for c in intel.contacts if c.contact_type == ContactType.LEADERSHIP]
+    teaching = [c for c in intel.contacts if c.contact_type == ContactType.TEACHING]
+    admin = [c for c in intel.contacts if c.contact_type == ContactType.ADMIN]
+    
+    if leadership:
+        st.subheader("Leadership Team")
+        for contact in leadership:
+            display_contact_card(contact)
+    
+    if teaching:
+        with st.expander(f"Teaching Staff ({len(teaching)})"):
+            for contact in teaching:
+                display_contact_card(contact)
+    
+    if admin:
+        with st.expander(f"Administrative Staff ({len(admin)})"):
+            for contact in admin:
+                display_contact_card(contact)
+
+def display_contact_card(contact):
+    """Display individual contact card"""
+    
+    confidence_class = {
+        "high": "confidence-high",
+        "medium": "confidence-medium", 
+        "low": "confidence-low"
+    }.get(contact.confidence.lower(), "")
+    
+    st.markdown(f"""
+    <div class="contact-card">
+        <strong>{contact.name}</strong> - {contact.title}<br>
+        <span class="{confidence_class}">Confidence: {contact.confidence}</span>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if contact.email:
+        st.write(f"📧 {contact.email}")
+    if contact.phone:
+        st.write(f"📞 {contact.phone}")
+    if contact.linkedin:
+        st.write(f"🔗 [LinkedIn]({contact.linkedin})")
+
+def display_conversation_starters(intel):
+    """Display AI-generated conversation starters"""
+    
+    if not intel.conversation_starters:
+        st.info("No conversation starters available")
+        return
+    
+    st.subheader("Conversation Starters")
+    st.write("Use these insights to start meaningful conversations:")
+    
+    for i, starter in enumerate(intel.conversation_starters, 1):
+        with st.expander(f"Approach {i}: {starter.get('hook', 'Conversation Starter')}"):
+            st.write(f"**Hook:** {starter.get('hook', '')}")
+            st.write(f"**Context:** {starter.get('context', '')}")
+            if starter.get('suggested_opening'):
+                st.write(f"**Opening Line:** *\"{starter['suggested_opening']}\"*")
 
 def display_competitors(intel):
-    """Display competitor agencies"""
+    """Display competitor information"""
     
-    if intel.competitors:
-        st.warning(f"⚠️ {len(intel.competitors)} competitor(s) detected")
-        
-        for comp in intel.competitors:
-            # Handle CompetitorPresence objects properly
-            if hasattr(comp, 'agency_name'):
-                # CompetitorPresence object from models.py
-                name = comp.agency_name
-                presence = comp.presence_type if hasattr(comp, 'presence_type') else 'Unknown'
-                confidence = f"{comp.confidence_score:.0%}" if hasattr(comp, 'confidence_score') else ''
-                
-                # Get evidence
-                evidence = ''
-                if hasattr(comp, 'evidence_urls') and comp.evidence_urls:
-                    evidence = f"Found in: {', '.join(comp.evidence_urls[:2])}"
-                
-                # Get weaknesses
-                weaknesses = ''
-                if hasattr(comp, 'weaknesses') and comp.weaknesses:
-                    weaknesses = '<br>'.join([f"• {w}" for w in comp.weaknesses[:3]])
-                
-                st.markdown(f"""
-                <div class="contact-card">
-                    <span class="competitor-badge">COMPETITOR</span>
-                    <strong>{name}</strong>
-                    <p><strong>Presence Type:</strong> {presence}</p>
-                    {f'<p><strong>Confidence:</strong> {confidence}</p>' if confidence else ''}
-                    {f'<p>{evidence}</p>' if evidence else ''}
-                    {f'<p><strong>Identified Weaknesses:</strong><br>{weaknesses}</p>' if weaknesses else ''}
-                </div>
-                """, unsafe_allow_html=True)
-                
-            elif isinstance(comp, dict):
-                # Dictionary format (fallback)
-                name = comp.get('name', comp.get('agency_name', 'Unknown'))
-                evidence = comp.get('evidence', comp.get('presence_type', ''))
-                source = comp.get('source', '')
-                
-                st.markdown(f"""
-                <div class="contact-card">
-                    <span class="competitor-badge">COMPETITOR</span>
-                    <strong>{name}</strong>
-                    <p>{evidence}</p>
-                    {f'<p><em>Source: {source}</em></p>' if source else ''}
-                </div>
-                """, unsafe_allow_html=True)
-            else:
-                st.write(str(comp))
-    else:
+    if not intel.competitors:
         st.success("✅ No competitor agencies detected")
-
-Streamlit financial display simple · PY
-Copy
+        return
+    
+    st.warning(f"⚠️ Found {len(intel.competitors)} competitor agencies")
+    
+    for comp in intel.competitors:
+        if isinstance(comp, dict):
+            agency = comp.get('agency', 'Unknown')
+            evidence = comp.get('evidence', 'No details')
+            
+            st.markdown(f"""
+            <div style="background-color: #FEE2E2; padding: 1rem; border-radius: 0.5rem; margin-bottom: 1rem;">
+                <span class="competitor-badge">{agency}</span>
+                <p style="color: #000000 !important; margin-top: 0.5rem;">{evidence}</p>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.write(str(comp))
 
 def display_financial_analysis(intel):
     """Display financial analysis data - SIMPLIFIED to just show the link"""
