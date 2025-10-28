@@ -229,4 +229,3 @@ def enhance_school_with_financial_data(intel, serper_engine):
         logger.error(f"❌ Error adding financial URL: {e}")
     
     return intel
-
