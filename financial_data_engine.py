@@ -187,8 +187,8 @@ class FinancialDataEngine:
 
 def enhance_school_with_financial_data(intel, serper_engine):
     """
-    Add financial data URL to existing school intelligence
-    SIMPLIFIED - Just adds the link, no scraping
+    Add financial URL to school intelligence - AUGUST WORKING VERSION
+    Just finds URN and creates link - NO complex data extraction
     """
     
     try:
@@ -196,34 +196,35 @@ def enhance_school_with_financial_data(intel, serper_engine):
         
         financial_engine = FinancialDataEngine(serper_engine)
         
-        financial_intel = financial_engine.get_recruitment_intelligence(
-            intel.school_name,
-            intel.address
-        )
+        # Just get the URN - nothing else
+        urn_result = financial_engine.get_school_urn(intel.school_name, intel.address)
         
-        if not financial_intel.get('error'):
-            # Store the financial URL
+        if urn_result.get('urn'):
+            # Build the government website URL
+            financial_url = f"https://financial-benchmarking-and-insights-tool.education.gov.uk/school/{urn_result['urn']}"
+            
+            # Store SIMPLE structure - exactly what Streamlit expects
             intel.financial_data = {
-                'url': financial_intel['financial_url'],
-                'urn': financial_intel['entity_found']['urn'],
-                'school_name': financial_intel['entity_found']['name'],
-                'url_valid': financial_intel['url_valid']
+                'url': financial_url,
+                'urn': urn_result['urn'],
+                'school_name': urn_result['official_name'],
+                'entity_type': 'School',
+                'url_valid': True
             }
             
-            # Add conversation starter with the link
-            for starter_text in financial_intel.get('conversation_starters', []):
-                intel.conversation_starters.append(
-                    ConversationStarter(
-                        topic="Financial Data",
-                        detail=starter_text,
-                        source_url=financial_intel['financial_url'],
-                        relevance_score=0.9
-                    )
+            # Add conversation starter
+            intel.conversation_starters.append(
+                ConversationStarter(
+                    topic="Financial Data Available",
+                    detail=f"View {urn_result['official_name']}'s financial data including spending priorities, staff costs, and benchmarking comparisons on the government database.",
+                    source_url=financial_url,
+                    relevance_score=0.9
                 )
+            )
             
-            logger.info(f"✅ Financial URL added: {financial_intel['financial_url']}")
+            logger.info(f"✅ Financial URL created: {financial_url}")
         else:
-            logger.warning(f"⚠️ Could not find financial data for {intel.school_name}")
+            logger.warning(f"⚠️ Could not find URN for {intel.school_name}")
     
     except Exception as e:
         logger.error(f"❌ Error adding financial URL: {e}")
