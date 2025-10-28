@@ -503,39 +503,49 @@ def display_competitors(intel):
         st.success("✅ No competitor agencies detected")
 
 def display_financial_analysis(intel):
-    """Display financial analysis data - SIMPLIFIED to just show the link"""
+    """Display financial analysis - AUGUST WORKING VERSION - SIMPLE LINK ONLY"""
     
     if hasattr(intel, 'financial_data') and intel.financial_data:
         
-        # Check if we have a URL
         if 'url' in intel.financial_data:
             financial_url = intel.financial_data['url']
             urn = intel.financial_data.get('urn', 'Unknown')
             school_name = intel.financial_data.get('school_name', intel.school_name)
-            url_valid = intel.financial_data.get('url_valid', True)
+            entity_type = intel.financial_data.get('entity_type', 'School')
             
             st.subheader("📊 School Financial Data")
             
-            st.success(f"✅ Financial data found for URN: {urn}")
+            st.success(f"✅ Financial data available")
             
-            # Show the clickable link prominently
-            st.markdown(f"### [View {school_name}'s Financial Data →]({financial_url})")
+            # Display school info in columns
+            col1, col2, col3 = st.columns(3)
             
-            st.info(f"**Direct Link:** {financial_url}")
-            
-            if url_valid:
-                st.write("✅ Link verified and working")
-            else:
-                st.warning("⚠️ Could not verify link (may still work)")
+            with col1:
+                st.write(f"**Entity:** {school_name}")
+            with col2:
+                st.write(f"**Type:** {entity_type}")
+            with col3:
+                st.write(f"**URN:** {urn}")
             
             st.write("---")
-            st.caption("This link will take you to the UK Government's Financial Benchmarking and Insights Tool where you can view:")
-            st.caption("• Teaching staff costs")
-            st.caption("• Administrative supplies spending") 
+            
+            # THE MAIN CLICKABLE LINK - EXACTLY AS AUGUST VERSION
+            st.markdown(f"### [FBIT Government Database]({financial_url})")
+            
+            st.caption("Click above to view detailed financial data including:")
+            st.caption("• Teaching staff costs per pupil")
+            st.caption("• Administrative spending")
             st.caption("• Revenue reserves and in-year balance")
-            st.caption("• Spending priorities and comparisons")
+            st.caption("• Spending priorities and benchmarking")
+            
+            st.write("---")
+            
+            # Show the direct URL for reference
+            with st.expander("Show direct URL"):
+                st.code(financial_url)
         
         else:
+            # This should never happen now
             st.warning("⚠️ Financial data structure not recognized")
             st.write("**Available keys:**", list(intel.financial_data.keys()))
     
