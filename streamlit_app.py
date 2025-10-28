@@ -502,86 +502,53 @@ def display_competitors(intel):
     else:
         st.success("✅ No competitor agencies detected")
 
+Streamlit financial display simple · PY
+Copy
+
 def display_financial_analysis(intel):
-    """Display financial analysis data"""
+    """Display financial analysis data - SIMPLIFIED to just show the link"""
     
     if hasattr(intel, 'financial_data') and intel.financial_data:
-        financial = intel.financial_data
         
-        # Check if this is MAT data
-        if 'trust_info' in financial:
-            st.subheader("Multi-Academy Trust Information")
+        # Check if we have a URL
+        if 'url' in intel.financial_data:
+            financial_url = intel.financial_data['url']
+            urn = intel.financial_data.get('urn', 'Unknown')
+            school_name = intel.financial_data.get('school_name', intel.school_name)
+            url_valid = intel.financial_data.get('url_valid', True)
             
-            trust_info = financial['trust_info']
+            st.subheader("📊 School Financial Data")
             
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.metric("Trust Name", trust_info.get('name', 'N/A'))
-            with col2:
-                st.metric("Total Schools", trust_info.get('total_schools', 'N/A'))
-            with col3:
-                st.metric("Total Pupils", trust_info.get('total_pupils', 'N/A'))
-            with col4:
-                st.metric("CEO", trust_info.get('ceo_name', 'N/A'))
+            st.success(f"✅ Financial data found for URN: {urn}")
             
-            # Financial overview
-            if 'financial_overview' in financial:
-                st.subheader("Financial Overview")
-                fin_data = financial['financial_overview']
-                
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("Total Income", f"£{fin_data['total_income']:,}")
-                with col2:
-                    st.metric("Total Expenditure", f"£{fin_data['total_expenditure']:,}")
-                with col3:
-                    revenue = fin_data['total_income'] - fin_data['total_expenditure']
-                    st.metric("Revenue", f"£{revenue:,}")
-                
-                # Staff costs
-                st.subheader("Staff Costs")
-                
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("Teaching Staff", f"£{fin_data['teaching_staff']:,}")
-                with col2:
-                    st.metric("Supply Staff", f"£{fin_data['supply_teachers']:,}")
-                with col3:
-                    pct_supply = (fin_data['supply_teachers'] / fin_data['teaching_staff'] * 100) if fin_data['teaching_staff'] > 0 else 0
-                    st.metric("Supply %", f"{pct_supply:.1f}%")
+            # Show the clickable link prominently
+            st.markdown(f"### [View {school_name}'s Financial Data →]({financial_url})")
             
-            # Recruitment costs
-            if 'recruitment_estimates' in fin_data:
-                st.subheader("Annual Recruitment Costs")
-                
-                estimates = fin_data['recruitment_estimates']
-                
-                if 'total_trust' in estimates:
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Trust Total", f"£{estimates['total_trust']:,}")
-                    with col2:
-                        st.metric("Per School Avg", f"£{estimates['per_school_avg']:,}")
-                    with col3:
-                        st.metric("Savings", estimates['economies_of_scale_saving'])
-                else:
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Low Estimate", f"£{estimates['low']:,}")
-                    with col2:
-                        st.metric("Best Estimate", f"£{estimates['midpoint']:,}")
-                    with col3:
-                        st.metric("High Estimate", f"£{estimates['high']:,}")
+            st.info(f"**Direct Link:** {financial_url}")
             
-            # Show insights
-            if 'insights' in financial and financial['insights']:
-                st.subheader("Key Insights")
-                for insight in financial['insights']:
-                    st.write(f"• {insight}")
+            if url_valid:
+                st.write("✅ Link verified and working")
+            else:
+                st.warning("⚠️ Could not verify link (may still work)")
+            
+            st.write("---")
+            st.caption("This link will take you to the UK Government's Financial Benchmarking and Insights Tool where you can view:")
+            st.caption("• Teaching staff costs")
+            st.caption("• Administrative supplies spending") 
+            st.caption("• Revenue reserves and in-year balance")
+            st.caption("• Spending priorities and comparisons")
         
+        else:
+            st.warning("⚠️ Financial data structure not recognized")
+            st.write("**Available keys:**", list(intel.financial_data.keys()))
+    
     else:
-        st.info("No financial data available for this school")
-
+        st.info("💡 No financial data available for this school")
+        st.caption("Financial data may not be available if:")
+        st.caption("• The school's URN could not be found")
+        st.caption("• The school has not published financial data")
+        st.caption("• The school is newly opened")
+        
 def display_ofsted_analysis(intel):
     """Display enhanced Ofsted analysis"""
     
