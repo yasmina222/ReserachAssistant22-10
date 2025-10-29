@@ -13,10 +13,7 @@ from email_pattern_validator import enhance_contacts_with_emails
 from ofsted_analyzer_v2 import OfstedAnalyzer, integrate_ofsted_analyzer
 from vacancy_detector import integrate_vacancy_detector
 from financial_data_engine import enhance_school_with_financial_data
-from models import (
-    SchoolIntelligence, Contact, CompetitorPresence, 
-    ConversationStarter, ContactType
-)
+from models import (SchoolIntelligence, Contact, ConversationStarter, ContactType)
 from cache import IntelligenceCache
 
 logger = logging.getLogger(__name__)
@@ -148,9 +145,7 @@ class PremiumSchoolProcessor:
                 intel.website,
                 known_emails
             )
-        
-        # Extract competitors (if found)
-        intel.competitors = self._extract_competitors(data)
+    
         
         # Extract Ofsted info
         ofsted_info = data.get('OFSTED INFORMATION', {})
@@ -246,32 +241,6 @@ class PremiumSchoolProcessor:
         
         return contacts
     
-    def _extract_competitors(self, data: Dict[str, Any]) -> List[CompetitorPresence]:
-        """Extract competitor information from premium AI data"""
-        
-        competitors = []
-        recruit_intel = data.get('RECRUITMENT INTELLIGENCE', {})
-        
-        # Check if any agencies were mentioned
-        agencies = recruit_intel.get('Any recruitment agencies mentioned in connection with the school')
-        if agencies and agencies != 'Not found':
-            # Parse agency names if found
-            if isinstance(agencies, str):
-                agency_names = [a.strip() for a in agencies.split(',')]
-            else:
-                agency_names = agencies
-                
-            for agency in agency_names:
-                competitor = CompetitorPresence(
-                    agency_name=agency,
-                    presence_type='mentioned',
-                    evidence_urls=data.get('sources', [])[:2],
-                    confidence_score=0.7
-                )
-                competitors.append(competitor)
-        
-        return competitors
-    
     def _calculate_quality_score(self, intel: SchoolIntelligence) -> float:
         """Calculate overall data quality score"""
         
@@ -327,84 +296,55 @@ class PremiumSchoolProcessor:
                 
         return results
     
-    def _serialize_intelligence(self, intel: SchoolIntelligence) -> Dict[str, Any]:
-        """
-        Convert SchoolIntelligence to dict for caching
-        CRITICAL FIX: Properly serialize ConversationStarter objects
-        """
-        
-        # CRITICAL: Convert ConversationStarter objects to dicts BEFORE serialization
-        conversation_starters_serialized = []
-        for starter in intel.conversation_starters:
-            if isinstance(starter, ConversationStarter):
-                # Convert ConversationStarter object to dict
-                conversation_starters_serialized.append({
-                    'topic': starter.topic,
-                    'detail': starter.detail,
-                    'source_url': starter.source_url,
-                    'relevance_score': starter.relevance_score,
-                    'date': starter.date.isoformat() if starter.date else None
-                })
-            elif isinstance(starter, dict):
-                # Already a dict
-                conversation_starters_serialized.append(starter)
-            else:
-                # String or other - wrap it
-                conversation_starters_serialized.append({
-                    'topic': 'General',
-                    'detail': str(starter),
-                    'source_url': '',
-                    'relevance_score': 0.7,
-                    'date': None
-                })
-        
-        serialized = {
-            'school_name': intel.school_name,
-            'website': intel.website,
-            'address': intel.address,
-            'phone_main': intel.phone_main,
-            'contacts': [
-                {
-                    'role': c.role.value,
-                    'full_name': c.full_name,
-                    'email': c.email,
-                    'phone': c.phone,
-                    'confidence_score': c.confidence_score
-                }
-                for c in intel.contacts
-            ],
-            'competitors': [
-                {
-                    'agency_name': c.agency_name,
-                    'presence_type': c.presence_type,
-                    'confidence_score': c.confidence_score
-                }
-                for c in intel.competitors
-            ],
-            'ofsted_rating': intel.ofsted_rating,
-            'ofsted_date': intel.ofsted_date.isoformat() if intel.ofsted_date else None,
-            # CRITICAL FIX: Use the properly serialized conversation starters
-            'conversation_starters': conversation_starters_serialized,
-            'data_quality_score': intel.data_quality_score
-        }
-        
-        # Include financial data if present
-        if hasattr(intel, 'financial_data') and intel.financial_data:
-            serialized['financial_data'] = intel.financial_data
-        
-        # Include Ofsted enhanced data if present
-        if hasattr(intel, 'ofsted_enhanced') and intel.ofsted_enhanced:
-            serialized['ofsted_enhanced'] = intel.ofsted_enhanced
-            
-        # Include vacancy data if present
-        if hasattr(intel, 'vacancy_data') and intel.vacancy_data:
-            serialized['vacancy_data'] = {
-                'total_found': intel.vacancy_data['total_found'],
-                'senior_roles': intel.vacancy_data['senior_roles'],
-                'analysis': intel.vacancy_data['analysis']
+def _serialize_intelligence(self, intel: SchoolIntelligence) -> Dict[str, Any]:
+    """Convert SchoolIntelligence to dict for caching"""
+    
+    # Properly serialize conversation starters
+    conversation_starters_serialized = []
+    for starter in intel.conversation_starters:
+        if isinstance(starter, ConversationStarter):
+            conversation_starters_serialized.append({
+                'topic': starter.topic,
+                'detail': starter.detail,
+                'source_url': starter.source_url if hasattr(starter, 'source_url') else '',
+                'relevance_score': starter.relevance_score
+            })
+        elif isinstance(starter, dict):
+            conversation_starters_serialized.append(starter)
+        else:
+            conversation_starters_serialized.append({
+                'topic': 'General',
+                'detail': str(starter),
+                'source_url': '',
+                'relevance_score': 0.7
+            })
+    
+    serialized = {
+        'school_name': intel.school_name,
+        'website': intel.website,
+        'address': intel.address,
+        'phone_main': intel.phone_main,
+        'contacts': [
+            {
+                'role': c.role.value,
+                'full_name': c.full_name,
+                'email': c.email,
+                'phone': c.phone,
+                'confidence_score': c.confidence_score
             }
-            
-        return serialized
+            for c in intel.contacts
+        ],
+        'ofsted_rating': intel.ofsted_rating,
+        'ofsted_date': intel.ofsted_date.isoformat() if intel.ofsted_date else None,
+        'conversation_starters': conversation_starters_serialized,
+        'data_quality_score': intel.data_quality_score
+    }
+    
+    # Include financial data if present
+    if hasattr(intel, 'financial_data') and intel.financial_data:
+        serialized['financial_data'] = intel.financial_data
+        
+    return serialized
     
     def _deserialize_intelligence(self, data: Dict[str, Any]) -> SchoolIntelligence:
         """Convert dict back to SchoolIntelligence"""
@@ -426,15 +366,6 @@ class PremiumSchoolProcessor:
                 confidence_score=c_data.get('confidence_score', 0.5)
             )
             intel.contacts.append(contact)
-        
-        # Recreate competitors
-        for comp_data in data.get('competitors', []):
-            competitor = CompetitorPresence(
-                agency_name=comp_data['agency_name'],
-                presence_type=comp_data['presence_type'],
-                confidence_score=comp_data.get('confidence_score', 0.5)
-            )
-            intel.competitors.append(competitor)
             
         # Recreate conversation starters FROM DICTS
         for starter_data in data.get('conversation_starters', []):
