@@ -24,12 +24,7 @@ def check_password():
 
     def password_entered():
         """Checks whether a password entered by the user is correct."""
-        # Password: SEG2025AI!
-        correct_password_hash = "b8f3d9c7a2e1f6d4b5a8c9e7f2d3a1b4c6e8f9a2b3c4d5e6f7a8b9c0d1e2f3a4"
-        
-        entered_hash = hashlib.sha256(st.session_state["password"].encode()).hexdigest()
-        
-        if entered_hash == correct_password_hash:
+        if st.session_state["password"] == "SEG2025AI!":
             st.session_state["password_correct"] = True
             del st.session_state["password"]
         else:
@@ -43,7 +38,7 @@ def check_password():
             on_change=password_entered, 
             key="password"
         )
-        st.caption("Internal access only - Contact IT for credentials")
+        st.caption("Internal access only")
         return False
     elif not st.session_state["password_correct"]:
         st.title("🔒 Protocol Education Research Assistant")
