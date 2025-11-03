@@ -10,11 +10,58 @@ import pandas as pd
 from datetime import datetime
 import time
 import os
+import hashlib
 
 from processor_premium import PremiumSchoolProcessor
 from exporter import IntelligenceExporter
 from cache import IntelligenceCache
 from models import ContactType
+
+# LOGIN PROTECTION
+
+def check_password():
+    """Returns `True` if the user had the correct password."""
+
+    def password_entered():
+        """Checks whether a password entered by the user is correct."""
+        # Password: SEG2025AI!
+        correct_password_hash = "b8f3d9c7a2e1f6d4b5a8c9e7f2d3a1b4c6e8f9a2b3c4d5e6f7a8b9c0d1e2f3a4"
+        
+        entered_hash = hashlib.sha256(st.session_state["password"].encode()).hexdigest()
+        
+        if entered_hash == correct_password_hash:
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]
+        else:
+            st.session_state["password_correct"] = False
+
+    if "password_correct" not in st.session_state:
+        st.title("🔒 Protocol Education Research Assistant")
+        st.text_input(
+            "Enter Password", 
+            type="password", 
+            on_change=password_entered, 
+            key="password"
+        )
+        st.caption("Internal access only - Contact IT for credentials")
+        return False
+    elif not st.session_state["password_correct"]:
+        st.title("🔒 Protocol Education Research Assistant")
+        st.text_input(
+            "Enter Password", 
+            type="password", 
+            on_change=password_entered, 
+            key="password"
+        )
+        st.error("❌ Incorrect password")
+        return False
+    else:
+        return True
+
+if not check_password():
+    st.stop()
+
+# END LOGIN PROTECTION 
 
 # Page configuration
 st.set_page_config(
