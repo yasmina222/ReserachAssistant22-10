@@ -1,6 +1,6 @@
 """
-Protocol Education CI System - Cache Module
-Handles caching of intelligence data to reduce API costs and improve performance
+Protocol Education CI System - Cache Module (FIXED)
+Handles caching of intelligence data - SYNCHRONOUS VERSION
 """
 
 import json
@@ -265,6 +265,4 @@ class IntelligenceCache:
                 logger.error(f"Error deleting {cache_file}: {e}")
         
         logger.info(f"🗑️ Cleared all cache ({deleted_count} entries)")
-
         return deleted_count
-
