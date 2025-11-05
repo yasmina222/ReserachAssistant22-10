@@ -1,7 +1,8 @@
-"""Cache module for Protocol Education CI System"""
+"""
+Protocol Education CI System - Cache Module
+"""
 
 import json
-import os
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
