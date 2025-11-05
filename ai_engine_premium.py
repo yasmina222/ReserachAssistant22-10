@@ -1,12 +1,13 @@
 """
-Protocol Education CI System - Premium AI Engine (FIXED)
+Protocol Education CI System - Premium AI Engine (ASYNC VERSION)
 Uses Serper API for web search + GPT-4-turbo for analysis
-Fixed: Proper JSON response structure for Streamlit display
+PHASE 1: Converted to async for parallel execution
 """
 
 import os
-import requests
-from openai import OpenAI
+import aiohttp
+import asyncio
+from openai import AsyncOpenAI
 from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime
 import json
@@ -17,8 +18,8 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-class PremiumAIEngine:
-    """Premium research engine using Serper + GPT-4-turbo"""
+class PremiumAIEngineAsync:
+    """Premium research engine using Serper + GPT-4-turbo with async operations"""
     
     def __init__(self):
         # Get API keys from Streamlit secrets (Cloud) or environment (Local)
@@ -30,7 +31,7 @@ class PremiumAIEngine:
             openai_key = os.getenv("OPENAI_API_KEY")
             serper_key = os.getenv("SERPER_API_KEY")
         
-        self.openai_client = OpenAI(api_key=openai_key)
+        self.openai_client = AsyncOpenAI(api_key=openai_key)
         self.serper_api_key = serper_key
         self.model = "gpt-4-turbo-preview"
         
@@ -42,19 +43,18 @@ class PremiumAIEngine:
             'gpt_cost': 0.0,
             'total_cost': 0.0
         }
-
         
-    def search_web(self, query: str, num_results: int = 10) -> List[Dict[str, Any]]:
-        """Search using Serper API"""
+    async def search_web(self, query: str, num_results: int = 10) -> List[Dict[str, Any]]:
+        """Search using Serper API - ASYNC version"""
         
         url = "https://google.serper.dev/search"
         
-        payload = json.dumps({
+        payload = {
             "q": query,
-            "gl": "uk",  # UK results
+            "gl": "uk",
             "hl": "en",
             "num": num_results
-        })
+        }
         
         headers = {
             'X-API-KEY': self.serper_api_key,
@@ -62,76 +62,90 @@ class PremiumAIEngine:
         }
         
         try:
-            response = requests.post(url, headers=headers, data=payload)
-            response.raise_for_status()
-            
-            # Track usage
-            self.usage['searches'] += 1
-            self.usage['search_cost'] += 0.02  # $50/2500 = $0.02 per search
-            
-            data = response.json()
-            
-            # Extract organic results
-            results = []
-            for item in data.get('organic', []):
-                results.append({
-                    'title': item.get('title', ''),
-                    'url': item.get('link', ''),
-                    'snippet': item.get('snippet', ''),
-                    'position': item.get('position', 0)
-                })
-            
-            # Also get knowledge graph if available
-            if 'knowledgeGraph' in data:
-                kg = data['knowledgeGraph']
-                results.insert(0, {
-                    'title': kg.get('title', ''),
-                    'url': kg.get('website', ''),
-                    'snippet': kg.get('description', ''),
-                    'type': 'knowledge_graph',
-                    'attributes': kg.get('attributes', {})
-                })
-            
-            return results
-            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                    response.raise_for_status()
+                    
+                    # Track usage
+                    self.usage['searches'] += 1
+                    self.usage['search_cost'] += 0.02
+                    
+                    data = await response.json()
+                    
+                    # Extract organic results
+                    results = []
+                    for item in data.get('organic', []):
+                        results.append({
+                            'title': item.get('title', ''),
+                            'url': item.get('link', ''),
+                            'snippet': item.get('snippet', ''),
+                            'position': item.get('position', 0)
+                        })
+                    
+                    # Also get knowledge graph if available
+                    if 'knowledgeGraph' in data:
+                        kg = data['knowledgeGraph']
+                        results.insert(0, {
+                            'title': kg.get('title', ''),
+                            'url': kg.get('website', ''),
+                            'snippet': kg.get('description', ''),
+                            'type': 'knowledge_graph',
+                            'attributes': kg.get('attributes', {})
+                        })
+                    
+                    return results
+                    
+        except asyncio.TimeoutError:
+            logger.error(f"Serper search timeout for query: {query}")
+            return []
         except Exception as e:
             logger.error(f"Serper search error: {e}")
             return []
     
-    def research_school(self, school_name: str, location: Optional[str] = None) -> Dict[str, Any]:
-        """Complete school research using search + GPT-4"""
+    async def research_school(self, school_name: str, location: Optional[str] = None) -> Dict[str, Any]:
+        """Complete school research using search + GPT-4 - ASYNC with parallel searches"""
         
-        # Step 1: Search for school information
+        # Build search queries
         search_query = f"{school_name} school UK"
         if location:
             search_query = f"{school_name} school {location} UK"
-            
-        logger.info(f"Searching for: {search_query}")
-        search_results = self.search_web(search_query)
         
-        # Step 2: Search for specific information
-        ofsted_results = self.search_web(f"{school_name} Ofsted rating latest inspection report")
-        contact_results = self.search_web(f"{school_name} headteacher deputy head staff directory")
-        news_results = self.search_web(f"{school_name} school news awards achievements 2024")
-        email_results = self.search_web(f"{school_name} school email contact @")
+        logger.info(f"Starting parallel searches for: {school_name}")
         
-        # Step 3: Combine all search results
+        # PARALLEL EXECUTION - Run all searches simultaneously
+        search_tasks = [
+            self.search_web(search_query, 5),
+            self.search_web(f"{school_name} Ofsted rating latest inspection report", 3),
+            self.search_web(f"{school_name} headteacher deputy head staff directory", 3),
+            self.search_web(f"{school_name} school news awards achievements 2024", 3),
+            self.search_web(f"{school_name} school email contact @", 2)
+        ]
+        
+        # Execute all searches in parallel
+        search_results = await asyncio.gather(*search_tasks)
+        
+        # Unpack results
+        general_results = search_results[0]
+        ofsted_results = search_results[1]
+        contact_results = search_results[2]
+        news_results = search_results[3]
+        email_results = search_results[4]
+        
+        # Combine all search results
         all_results = {
-            'general': search_results[:5],
-            'ofsted': ofsted_results[:3],
-            'contacts': contact_results[:3],
-            'news': news_results[:3],
-            'email_patterns': email_results[:2]
+            'general': general_results,
+            'ofsted': ofsted_results,
+            'contacts': contact_results,
+            'news': news_results,
+            'email_patterns': email_results
         }
         
-        # Update usage for additional searches
-        self.usage['searches'] += 4  # We added 4 more searches
-        self.usage['search_cost'] += 0.08
+        logger.info(f"Completed parallel searches, found {sum(len(r) for r in all_results.values())} total results")
         
-        # Step 4: Analyze with GPT-4
-        analysis = self._analyze_with_gpt(school_name, all_results)
+        # Analyze with GPT-4 (async)
+        analysis = await self._analyze_with_gpt(school_name, all_results)
         
-        # Step 5: Structure the results
+        # Structure the results
         return {
             'school_name': school_name,
             'location': location,
@@ -141,8 +155,8 @@ class PremiumAIEngine:
             'usage': self.usage.copy()
         }
     
-    def _analyze_with_gpt(self, school_name: str, search_results: Dict[str, List]) -> Dict[str, Any]:
-        """Analyze search results with GPT-4-turbo - FIXED JSON STRUCTURE"""
+    async def _analyze_with_gpt(self, school_name: str, search_results: Dict[str, List]) -> Dict[str, Any]:
+        """Analyze search results with GPT-4-turbo - ASYNC version"""
         
         # Format search results for GPT
         search_text = self._format_search_results(search_results)
@@ -210,7 +224,7 @@ class PremiumAIEngine:
         """
         
         try:
-            response = self.openai_client.chat.completions.create(
+            response = await self.openai_client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {
@@ -222,7 +236,7 @@ class PremiumAIEngine:
                         "content": prompt
                     }
                 ],
-                temperature=0.1,  # Very low for accuracy
+                temperature=0.1,
                 max_tokens=2000,
                 response_format={"type": "json_object"}
             )
@@ -231,13 +245,12 @@ class PremiumAIEngine:
             if hasattr(response, 'usage'):
                 tokens = response.usage.total_tokens
                 self.usage['tokens_used'] += tokens
-                # GPT-4-turbo pricing: $0.01/1k input, $0.03/1k output
-                self.usage['gpt_cost'] += (tokens / 1000) * 0.02  # Average
+                self.usage['gpt_cost'] += (tokens / 1000) * 0.02
             
             # Parse response
             result = json.loads(response.choices[0].message.content)
             
-            # Ensure proper structure - normalize the data
+            # Ensure proper structure
             normalized_result = self._normalize_gpt_response(result)
             
             # Calculate confidence scores
@@ -302,7 +315,7 @@ class PremiumAIEngine:
             "PROTOCOL ADVANTAGES": []
         }
         
-        # Merge the result with the template, ensuring all fields exist
+        # Merge the result with the template
         normalized = {}
         
         for section, fields in template.items():
@@ -311,18 +324,16 @@ class PremiumAIEngine:
             if isinstance(fields, dict):
                 for field, default in fields.items():
                     value = result.get(section, {}).get(field, default)
-                    # Ensure lists are lists, not strings
                     if isinstance(default, list) and isinstance(value, str):
                         normalized[section][field] = [value] if value != "Not found" else []
                     else:
                         normalized[section][field] = value
             elif isinstance(fields, list):
-                # For top-level lists like CONVERSATION STARTERS
                 normalized[section] = result.get(section, [])
                 if not isinstance(normalized[section], list):
                     normalized[section] = []
         
-        # Handle special case for conversation starters and advantages
+        # Handle special cases
         if "CONVERSATION STARTERS for recruitment consultants" in result:
             starters = result["CONVERSATION STARTERS for recruitment consultants"]
             normalized["CONVERSATION STARTERS for recruitment consultants"] = starters if isinstance(starters, list) else []
@@ -394,7 +405,6 @@ class PremiumAIEngine:
                 formatted.append(f"   URL: {item.get('url', 'No URL')}")
                 formatted.append(f"   {item.get('snippet', 'No snippet')}")
                 
-                # Include knowledge graph attributes if present
                 if item.get('type') == 'knowledge_graph' and 'attributes' in item:
                     for key, value in item['attributes'].items():
                         formatted.append(f"   {key}: {value}")
@@ -417,16 +427,6 @@ class PremiumAIEngine:
     def _add_confidence_scores(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Add confidence scores based on data completeness"""
         
-        # Calculate confidence for contacts
-        contacts = data.get('KEY LEADERSHIP CONTACTS', {})
-        for role, info in contacts.items():
-            if info and info != 'Not found':
-                # Add confidence based on whether we found the contact
-                confidence = 0.8
-            else:
-                confidence = 0.0
-        
-        # Overall data quality score
         quality_score = 0.0
         checks = [
             (data.get('BASIC INFORMATION', {}).get('Website URL'), 0.2),
@@ -453,6 +453,6 @@ class PremiumAIEngine:
         
         return {
             **self.usage,
-            'cost_per_school': self.usage['total_cost'] / max(self.usage['searches'] / 5, 1),  # Adjusted for 5 searches per school
-            'monthly_projection': self.usage['total_cost'] * 30  # If running daily
+            'cost_per_school': self.usage['total_cost'] / max(self.usage['searches'] / 5, 1),
+            'monthly_projection': self.usage['total_cost'] * 30
         }
