@@ -1,7 +1,8 @@
 """
-Protocol Education CI System - Streamlit Web Interface (ASYNC VERSION - COMPLETE)
-PHASE 1: Uses async processor for 70% speed improvement
-ALL DISPLAY FUNCTIONS INCLUDED - NO EXTERNAL IMPORTS
+Protocol Education CI System - Streamlit Web Interface
+User-friendly web application for the intelligence system
+Enhanced: Added Ofsted deep analysis and vacancy display
+FIXED: Removed all black boxes and changed button to BLUE
 """
 
 import streamlit as st
@@ -9,16 +10,18 @@ import pandas as pd
 from datetime import datetime
 import time
 import os
+import hashlib
 
-# Import ASYNC processor (uses sync wrapper for backward compatibility)
-from processor_premium_async import PremiumSchoolProcessor
+from processor_premium import PremiumSchoolProcessor
 from exporter import IntelligenceExporter
-from cache_async import IntelligenceCache
+from cache import IntelligenceCache
 from models import ContactType
 
 # LOGIN PROTECTION
+
 def check_password():
     """Returns `True` if the user had the correct password."""
+
     def password_entered():
         """Checks whether a password entered by the user is correct."""
         if st.session_state["password"] == "SEG2025AI!":
@@ -53,10 +56,12 @@ def check_password():
 if not check_password():
     st.stop()
 
+# END LOGIN PROTECTION 
+
 # Page configuration
 st.set_page_config(
     page_title="Protocol Education Research Assistant",
-    page_icon="🏫",
+    page_icon="P",
     layout="wide"
 )
 
@@ -77,57 +82,242 @@ processor = get_processor()
 exporter = get_exporter()
 cache = get_cache()
 
-# FULL CSS
+# FIXED CSS - BLACK BOXES REMOVED + BLUE BUTTON
 st.markdown("""
 <style>
-    .stApp { background-color: #FFFFFF !important; }
-    body, p, span, div, label, li, td, th, h1, h2, h3, h4, h5, h6 { color: #000000 !important; }
-    .stMarkdown, .stText { color: #000000 !important; }
-    h1, h2, h3, h4, h5, h6 { color: #000000 !important; font-weight: 700 !important; }
-    input, textarea, select { color: #000000 !important; background-color: #FFFFFF !important; border: 2px solid #CCCCCC !important; }
-    button[kind="primary"] { background-color: #0066FF !important; color: #FFFFFF !important; border: none !important; font-weight: 600 !important; }
-    button[kind="primary"]:hover { background-color: #0052CC !important; }
-    [data-testid="stMetricValue"] { color: #000000 !important; font-size: 24px !important; font-weight: bold !important; }
-    [data-testid="stMetricLabel"] { color: #000000 !important; font-weight: 600 !important; }
-    .streamlit-expanderHeader { color: #000000 !important; font-weight: 600 !important; background-color: #F3F4F6 !important; }
-    .streamlit-expanderContent { background-color: #FFFFFF !important; color: #000000 !important; }
-    details { background-color: transparent !important; }
-    details div { background-color: transparent !important; color: #000000 !important; }
-    details[open] { background-color: #FFFFFF !important; }
-    details[open] > div { background-color: #FFFFFF !important; }
-    details > div > div { background-color: transparent !important; }
-    [data-testid="stExpander"] { background-color: #FFFFFF !important; border: 1px solid #E5E7EB !important; }
-    [data-testid="stExpander"] > div { background-color: #FFFFFF !important; }
-    [data-testid="stExpander"] div { background-color: transparent !important; }
-    [data-testid="stExpander"] * { background-color: transparent !important; }
-    [data-testid="stExpander"] p, [data-testid="stExpander"] span, [data-testid="stExpander"] div { color: #000000 !important; }
-    .stAlert { color: #000000 !important; }
-    [data-baseweb="notification"] { background-color: #FFFFFF !important; color: #000000 !important; }
-    .stSuccess { background-color: #D1FAE5 !important; color: #065F46 !important; }
-    .stInfo { background-color: #DBEAFE !important; color: #1E40AF !important; }
-    .stWarning { background-color: #FEF3C7 !important; color: #92400E !important; }
-    .stError { background-color: #FEE2E2 !important; color: #991B1B !important; }
-    .contact-card { background-color: #F9FAFB !important; padding: 1rem; border-radius: 0.5rem; margin-bottom: 1rem; border: 1px solid #E5E7EB; color: #000000 !important; }
-    .competitor-badge { background-color: #EF4444; color: #FFFFFF; padding: 0.25rem 0.5rem; border-radius: 0.25rem; display: inline-block; margin-right: 0.5rem; font-weight: 600; }
-    .confidence-high { color: #16A34A !important; font-weight: 600; }
-    .confidence-medium { color: #EA580C !important; font-weight: 600; }
-    .confidence-low { color: #DC2626 !important; font-weight: 600; }
-    [data-testid="stSidebar"] { background-color: #F9FAFB !important; }
-    [data-testid="stSidebar"] * { color: #000000 !important; }
-    .stTabs [data-baseweb="tab-list"] button { color: #000000 !important; font-weight: 600 !important; }
-    .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] { color: #000000 !important; border-bottom: 2px solid #0066FF !important; }
-    table { color: #000000 !important; }
-    th { background-color: #F3F4F6 !important; color: #000000 !important; font-weight: 700 !important; }
-    td { color: #000000 !important; border-bottom: 1px solid #E5E7EB !important; }
-    code { color: #000000 !important; background-color: #F3F4F6 !important; }
-    pre { color: #000000 !important; background-color: #F3F4F6 !important; }
+    /* White background everywhere */
+    .stApp {
+        background-color: #FFFFFF !important;
+    }
+    
+    /* ALL TEXT BLACK */
+    body, p, span, div, label, li, td, th, h1, h2, h3, h4, h5, h6 {
+        color: #000000 !important;
+    }
+    
+    /* Streamlit specific text elements */
+    .stMarkdown, .stText {
+        color: #000000 !important;
+    }
+    
+    /* Headers BOLD BLACK */
+    h1, h2, h3, h4, h5, h6 {
+        color: #000000 !important;
+        font-weight: 700 !important;
+    }
+    
+    /* Input fields - black text, white background */
+    input, textarea, select {
+        color: #000000 !important;
+        background-color: #FFFFFF !important;
+        border: 2px solid #CCCCCC !important;
+    }
+    
+    /* BLUE BUTTON - FIXED FROM RED */
+    button[kind="primary"] {
+        background-color: #0066FF !important;
+        color: #FFFFFF !important;
+        border: none !important;
+        font-weight: 600 !important;
+    }
+    
+    button[kind="primary"]:hover {
+        background-color: #0052CC !important;
+    }
+    
+    /* Metrics - BLACK */
+    [data-testid="stMetricValue"] {
+        color: #000000 !important;
+        font-size: 24px !important;
+        font-weight: bold !important;
+    }
+    
+    [data-testid="stMetricLabel"] {
+        color: #000000 !important;
+        font-weight: 600 !important;
+    }
+    
+    /* ===== COMPLETE BLACK BOX FIX - EXPANDERS ===== */
+    /* Remove ALL dark backgrounds from expanders */
+    .streamlit-expanderHeader {
+        color: #000000 !important;
+        font-weight: 600 !important;
+        background-color: #F3F4F6 !important;
+    }
+    
+    .streamlit-expanderContent {
+        background-color: #FFFFFF !important;
+        color: #000000 !important;
+    }
+    
+    /* Fix ALL nested divs inside expanders */
+    details {
+        background-color: transparent !important;
+    }
+    
+    details div {
+        background-color: transparent !important;
+        color: #000000 !important;
+    }
+    
+    details[open] {
+        background-color: #FFFFFF !important;
+    }
+    
+    details[open] > div {
+        background-color: #FFFFFF !important;
+    }
+    
+    details > div > div {
+        background-color: transparent !important;
+    }
+    
+    /* Target the expander container specifically */
+    [data-testid="stExpander"] {
+        background-color: #FFFFFF !important;
+        border: 1px solid #E5E7EB !important;
+    }
+    
+    [data-testid="stExpander"] > div {
+        background-color: #FFFFFF !important;
+    }
+    
+    [data-testid="stExpander"] div {
+        background-color: transparent !important;
+    }
+    
+    /* Force all children of expanders to be transparent/white */
+    [data-testid="stExpander"] * {
+        background-color: transparent !important;
+    }
+    
+    /* Make sure text inside expanders is visible */
+    [data-testid="stExpander"] p,
+    [data-testid="stExpander"] span,
+    [data-testid="stExpander"] div {
+        color: #000000 !important;
+    }
+    /* ===== END BLACK BOX FIX ===== */
+    
+    /* Success/Info/Warning/Error boxes - KEEP ORIGINAL COLORS */
+    .stAlert {
+        color: #000000 !important;
+    }
+    
+    [data-baseweb="notification"] {
+        background-color: #FFFFFF !important;
+        color: #000000 !important;
+    }
+    
+    .stSuccess {
+        background-color: #D1FAE5 !important;
+        color: #065F46 !important;
+    }
+    
+    .stInfo {
+        background-color: #DBEAFE !important;
+        color: #1E40AF !important;
+    }
+    
+    .stWarning {
+        background-color: #FEF3C7 !important;
+        color: #92400E !important;
+    }
+    
+    .stError {
+        background-color: #FEE2E2 !important;
+        color: #991B1B !important;
+    }
+    
+    /* Contact cards */
+    .contact-card {
+        background-color: #F9FAFB !important;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        margin-bottom: 1rem;
+        border: 1px solid #E5E7EB;
+        color: #000000 !important;
+    }
+    
+    /* Competitor badges */
+    .competitor-badge {
+        background-color: #EF4444;
+        color: #FFFFFF;
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.25rem;
+        display: inline-block;
+        margin-right: 0.5rem;
+        font-weight: 600;
+    }
+    
+    /* Confidence colors */
+    .confidence-high { 
+        color: #16A34A !important;
+        font-weight: 600;
+    }
+    .confidence-medium { 
+        color: #EA580C !important;
+        font-weight: 600;
+    }
+    .confidence-low { 
+        color: #DC2626 !important;
+        font-weight: 600;
+    }
+    
+    /* Sidebar - light background */
+    [data-testid="stSidebar"] {
+        background-color: #F9FAFB !important;
+    }
+    
+    [data-testid="stSidebar"] * {
+        color: #000000 !important;
+    }
+    
+    /* Tabs - BLACK TEXT */
+    .stTabs [data-baseweb="tab-list"] button {
+        color: #000000 !important;
+        font-weight: 600 !important;
+    }
+    
+    .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
+        color: #000000 !important;
+        border-bottom: 2px solid #0066FF !important;
+    }
+    
+    /* Tables */
+    table {
+        color: #000000 !important;
+    }
+    
+    th {
+        background-color: #F3F4F6 !important;
+        color: #000000 !important;
+        font-weight: 700 !important;
+    }
+    
+    td {
+        color: #000000 !important;
+        border-bottom: 1px solid #E5E7EB !important;
+    }
+    
+    /* Code blocks */
+    code {
+        color: #000000 !important;
+        background-color: #F3F4F6 !important;
+    }
+    
+    pre {
+        color: #000000 !important;
+        background-color: #F3F4F6 !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# ALL DISPLAY FUNCTIONS (COMPLETE - NOT SHORTENED)
+# Define all display functions first
 def display_school_intelligence(intel):
     """Display school intelligence in Streamlit"""
     
+    # Header metrics
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
@@ -139,6 +329,7 @@ def display_school_intelligence(intel):
     with col4:
         st.metric("Processing Time", f"{intel.processing_time:.1f}s")
     
+    # School info
     st.subheader(f"{intel.school_name}")
     if intel.website:
         st.write(f"🌐 {intel.website}")
@@ -147,23 +338,30 @@ def display_school_intelligence(intel):
     
     st.divider()
     
+    # Create tabs
     tabs = st.tabs(["Conversation Starters", "Contacts", "Competitors", "Financial Analysis", "Ofsted Analysis", "Vacancies"])
     
+    # Tab 1: Conversation starters
     with tabs[0]:
         display_conversation_starters(intel)
     
+    # Tab 2: Contacts
     with tabs[1]:
         display_contacts(intel)
     
+    # Tab 3: Competitors
     with tabs[2]:
         display_competitors(intel)
     
+    # Tab 4: Financial Analysis
     with tabs[3]:
         display_financial_data(intel)
     
+    # Tab 5: Ofsted Analysis
     with tabs[4]:
         display_ofsted_analysis(intel)
     
+    # Tab 6: Vacancies
     with tabs[5]:
         display_vacancies(intel)
 
@@ -175,14 +373,25 @@ def display_conversation_starters(intel):
         
         for i, starter in enumerate(intel.conversation_starters, 1):
             with st.expander(f"**Conversation Starter #{i}**", expanded=(i == 1)):
+                # Handle different data structures
                 if isinstance(starter, str):
+                    # If starter is just a string
                     st.write(starter)
+                    
                 elif hasattr(starter, 'detail'):
+                    # ConversationStarter object from models.py
+                    # Show topic as header if available
                     if hasattr(starter, 'topic') and starter.topic:
                         st.markdown(f"**{starter.topic}**")
+                    
+                    # Show the main detail/content
                     st.write(starter.detail)
+                    
+                    # Show source URL if available
                     if hasattr(starter, 'source_url') and starter.source_url:
                         st.write(f"**Source:** {starter.source_url}")
+                    
+                    # Show relevance score if available
                     if hasattr(starter, 'relevance_score') and starter.relevance_score:
                         score = starter.relevance_score
                         if score > 0.8:
@@ -194,23 +403,39 @@ def display_conversation_starters(intel):
                         else:
                             confidence_class = "confidence-low"
                             confidence_label = "LOW"
-                        st.markdown(f'<span class="{confidence_class}">Relevance: {confidence_label} ({score:.0%})</span>', unsafe_allow_html=True)
+                        
+                        st.markdown(
+                            f'<span class="{confidence_class}">Relevance: {confidence_label} ({score:.0%})</span>',
+                            unsafe_allow_html=True
+                        )
+                    
+                    # Show date if available
                     if hasattr(starter, 'date') and starter.date:
                         st.caption(f"Date: {starter.date.strftime('%Y-%m-%d')}")
+                        
                 elif isinstance(starter, dict):
+                    # Dictionary format (fallback)
+                    # Look for text in various keys
                     text = starter.get('detail') or starter.get('text') or starter.get('starter') or starter.get('content') or str(starter)
                     st.write(text)
+                    
+                    # Show topic if available
                     if 'topic' in starter:
                         st.caption(f"Topic: {starter['topic']}")
+                    
+                    # Show sources if available
                     sources = starter.get('sources', [])
                     if sources:
                         st.write("**Sources:**")
                         for source in sources:
                             st.write(f"• {source}")
+                    
+                    # Show relevance/confidence if available
                     relevance = starter.get('relevance_score') or starter.get('confidence')
                     if relevance:
                         st.caption(f"Relevance: {relevance:.0%}")
                 else:
+                    # Fallback: just display whatever it is
                     st.write(str(starter))
     else:
         st.warning("No conversation starters generated")
@@ -223,7 +448,9 @@ def display_contacts(intel):
         
         for contact in intel.contacts:
             with st.container():
+                # Handle Contact objects properly
                 if hasattr(contact, 'full_name'):
+                    # Contact object from models.py
                     name = contact.full_name
                     role = contact.role.value.replace('_', ' ').title() if hasattr(contact.role, 'value') else str(contact.role)
                     email = contact.email or 'Not available'
@@ -240,7 +467,9 @@ def display_contacts(intel):
                         {f'<p><strong>Notes:</strong> {contact.notes}</p>' if hasattr(contact, 'notes') and contact.notes else ''}
                     </div>
                     """, unsafe_allow_html=True)
+                    
                 elif isinstance(contact, dict):
+                    # Dictionary format (fallback)
                     name = contact.get('name', contact.get('full_name', 'Unknown'))
                     role = contact.get('role', 'Unknown')
                     email = contact.get('email', 'Not available')
@@ -268,13 +497,19 @@ def display_competitors(intel):
         st.warning(f"⚠️ {len(intel.competitors)} competitor(s) detected")
         
         for comp in intel.competitors:
+            # Handle CompetitorPresence objects properly
             if hasattr(comp, 'agency_name'):
+                # CompetitorPresence object from models.py
                 name = comp.agency_name
                 presence = comp.presence_type if hasattr(comp, 'presence_type') else 'Unknown'
                 confidence = f"{comp.confidence_score:.0%}" if hasattr(comp, 'confidence_score') else ''
+                
+                # Get evidence
                 evidence = ''
                 if hasattr(comp, 'evidence_urls') and comp.evidence_urls:
                     evidence = f"Found in: {', '.join(comp.evidence_urls[:2])}"
+                
+                # Get weaknesses
                 weaknesses = ''
                 if hasattr(comp, 'weaknesses') and comp.weaknesses:
                     weaknesses = '<br>'.join([f"• {w}" for w in comp.weaknesses[:3]])
@@ -289,7 +524,9 @@ def display_competitors(intel):
                     {f'<p><strong>Identified Weaknesses:</strong><br>{weaknesses}</p>' if weaknesses else ''}
                 </div>
                 """, unsafe_allow_html=True)
+                
             elif isinstance(comp, dict):
+                # Dictionary format (fallback)
                 name = comp.get('name', comp.get('agency_name', 'Unknown'))
                 evidence = comp.get('evidence', comp.get('presence_type', ''))
                 source = comp.get('source', '')
@@ -306,9 +543,9 @@ def display_competitors(intel):
                 st.write(str(comp))
     else:
         st.success("✅ No competitor agencies detected")
-
+        
 def display_financial_data(intel):
-    """Display financial data and recruitment costs"""
+    """Display financial data and recruitment costs - NOW TRUST-AWARE"""
     
     if hasattr(intel, 'financial_data') and intel.financial_data:
         financial = intel.financial_data
@@ -317,11 +554,13 @@ def display_financial_data(intel):
             st.warning(f"Could not retrieve financial data: {financial['error']}")
             return
         
+        # Entity info (School or Trust)
         if 'entity_found' in financial:
             entity = financial['entity_found']
             
+            # Show if we found trust-level data
             if entity['type'] == 'Trust':
-                st.info(f"🏢 Found trust-level financial data for **{entity['name']}**")
+                st.info(f"🏢 Found trust-level financial data for **{entity['name']}** which manages {entity.get('schools_in_trust', 'multiple')} schools including {financial['school_searched']}")
             
             col1, col2, col3 = st.columns(3)
             with col1:
@@ -332,26 +571,49 @@ def display_financial_data(intel):
                 st.write(f"**Schools:** {entity.get('schools_in_trust', 'N/A')}")
             with col3:
                 st.write(f"**Match Confidence:** {entity.get('confidence', 0):.0%}")
+                if entity['type'] == 'Trust':
+                    st.write("**Economies of Scale:** ✅")
         
         st.divider()
         
+        # Financial data
         if 'financial' in financial and financial['financial']:
             fin_data = financial['financial']
             
+            # Recruitment cost estimates (PROMINENT DISPLAY)
             if 'recruitment_estimates' in fin_data:
                 st.subheader("🎯 Annual Recruitment Costs")
+                
                 estimates = fin_data['recruitment_estimates']
                 
-                if 'total_trust' in estimates:
+                if 'total_trust' in estimates:  # Trust-level data
                     col1, col2, col3 = st.columns(3)
+                    
                     with col1:
-                        st.metric("Trust Total", f"£{estimates['total_trust']:,}")
+                        st.metric(
+                            "Trust Total",
+                            f"£{estimates['total_trust']:,}",
+                            help="Total recruitment spend across all schools"
+                        )
                     with col2:
-                        st.metric("Per School Average", f"£{estimates['per_school_avg']:,}")
+                        st.metric(
+                            "Per School Average",
+                            f"£{estimates['per_school_avg']:,}",
+                            help="Average recruitment cost per school in trust"
+                        )
                     with col3:
-                        st.metric("Savings vs Independent", estimates['economies_of_scale_saving'])
-                else:
+                        st.metric(
+                            "Savings vs Independent",
+                            estimates['economies_of_scale_saving'],
+                            help="Cost savings from trust-wide recruitment"
+                        )
+                    
+                    if estimates.get('explanation'):
+                        st.success(f"💡 {estimates['explanation']}")
+                
+                else:  # School-level data
                     col1, col2, col3 = st.columns(3)
+                    
                     with col1:
                         st.metric("Low Estimate", f"£{estimates['low']:,}")
                     with col2:
@@ -359,19 +621,107 @@ def display_financial_data(intel):
                     with col3:
                         st.metric("High Estimate", f"£{estimates['high']:,}")
             
-            if 'insights' in financial and financial['insights']:
-                st.subheader("💡 Key Insights")
-                for insight in financial['insights']:
-                    st.write(f"• {insight}")
+            # Supply costs
+            if 'supply_staff_costs' in fin_data or (fin_data.get('per_school_estimates', {}).get('avg_supply')):
+                st.subheader("💰 Supply Staff Costs")
+                
+                if 'per_school_estimates' in fin_data and fin_data['per_school_estimates'].get('avg_supply'):
+                    # Trust breakdown
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.metric(
+                            "Trust Total Supply Costs",
+                            f"£{fin_data.get('supply_staff_costs', 0):,}"
+                        )
+                    with col2:
+                        st.metric(
+                            "Average Per School",
+                            f"£{fin_data['per_school_estimates']['avg_supply']:,}"
+                        )
+                else:
+                    # Single school
+                    st.metric(
+                        "Annual Supply Costs",
+                        f"£{fin_data.get('supply_staff_costs', 0):,}"
+                    )
+            
+            # Total opportunity
+            if 'recruitment_estimates' in fin_data and 'supply_staff_costs' in fin_data:
+                st.subheader("📊 Total Opportunity")
+                
+                if 'total_trust' in fin_data['recruitment_estimates']:
+                    total = fin_data['recruitment_estimates']['total_trust'] + fin_data.get('supply_staff_costs', 0)
+                    st.metric(
+                        "Total Trust Temporary Staffing Spend",
+                        f"£{total:,}",
+                        help="Combined recruitment + supply costs across trust"
+                    )
+                else:
+                    total = fin_data['recruitment_estimates']['midpoint'] + fin_data.get('supply_staff_costs', 0)
+                    st.metric(
+                        "Total Temporary Staffing Spend",
+                        f"£{total:,}",
+                        help="Combined recruitment + supply costs"
+                    )
+            
+            # Other financial metrics in expandable section
+            with st.expander("📈 Additional Financial Data"):
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    if 'teaching_staff_per_pupil' in fin_data:
+                        st.metric(
+                            "Teaching Staff Cost",
+                            f"£{fin_data['teaching_staff_per_pupil']:,}/pupil"
+                        )
+                    
+                    if 'total_expenditure' in fin_data:
+                        st.metric(
+                            "Total Expenditure",
+                            f"£{fin_data['total_expenditure']:,}"
+                        )
+                
+                with col2:
+                    if 'admin_supplies_per_pupil' in fin_data:
+                        st.metric(
+                            "Admin Supplies",
+                            f"£{fin_data['admin_supplies_per_pupil']:,}/pupil"
+                        )
+                    
+                    if 'indirect_employee_expenses' in fin_data:
+                        st.metric(
+                            "Indirect Employee Expenses",
+                            f"£{fin_data['indirect_employee_expenses']:,}"
+                        )
+            
+            # Data source
+            if 'source_url' in fin_data:
+                st.caption(f"Data source: [FBIT Government Database]({fin_data['source_url']})")
+                st.caption(f"Extracted: {fin_data.get('extracted_date', 'N/A')}")
+        
+        # Insights
+        if 'insights' in financial and financial['insights']:
+            st.subheader("💡 Key Insights")
+            for insight in financial['insights']:
+                st.write(f"• {insight}")
+        
+        # Conversation starters specific to costs
+        if 'conversation_starters' in financial and financial['conversation_starters']:
+            st.subheader("💬 Cost-Focused Conversation Starters")
+            for i, starter in enumerate(financial['conversation_starters'], 1):
+                with st.expander(f"Talking Point {i}"):
+                    st.write(starter)
+        
     else:
         st.info("No financial data available for this school")
-
+        
 def display_ofsted_analysis(intel):
     """Display enhanced Ofsted analysis"""
     
     if hasattr(intel, 'ofsted_enhanced') and intel.ofsted_enhanced:
         ofsted_data = intel.ofsted_enhanced
         
+        # Header
         col1, col2, col3 = st.columns(3)
         with col1:
             rating = ofsted_data.get('rating', 'Unknown')
@@ -388,6 +738,7 @@ def display_ofsted_analysis(intel):
         
         st.divider()
         
+        # Priority order
         priority_order = ofsted_data.get('priority_order', [])
         if priority_order:
             st.error("OFSTED IMPROVEMENT PRIORITIES")
@@ -395,14 +746,36 @@ def display_ofsted_analysis(intel):
                 st.write(f"**{i}. {priority}**")
             st.markdown("---")
         
+        # Main improvements
         main_improvements = ofsted_data.get('main_improvements', [])
         if main_improvements:
             st.subheader("Key Areas for Improvement")
+            
             for improvement in main_improvements:
                 with st.expander(f"**{improvement['area']}**", expanded=True):
                     st.write(improvement['description'])
                     if improvement.get('specifics'):
                         st.write(f"*Details: {improvement['specifics']}*")
+        
+        # Subject improvements
+        subject_improvements = ofsted_data.get('subject_improvements', {})
+        if subject_improvements:
+            st.subheader("Subject-Specific Improvements")
+            
+            cols = st.columns(min(3, len(subject_improvements)))
+            
+            for idx, (subject, details) in enumerate(subject_improvements.items()):
+                with cols[idx % 3]:
+                    urgency = details.get('urgency', 'MEDIUM')
+                    if urgency == 'HIGH':
+                        st.error(f"**{subject.upper()}** - HIGH PRIORITY")
+                    else:
+                        st.warning(f"**{subject.upper()}**")
+                    
+                    issues = details.get('issues', [])
+                    for issue in issues[:2]:
+                        st.write(f"• {issue}")
+        
     else:
         if intel.ofsted_rating:
             st.info(f"Ofsted Rating: {intel.ofsted_rating}")
@@ -417,6 +790,7 @@ def display_vacancies(intel):
     vacancy_data = intel.vacancy_data
     
     col1, col2, col3, col4 = st.columns(4)
+    
     with col1:
         st.metric("Total Vacancies", vacancy_data['total_found'])
     with col2:
@@ -428,7 +802,7 @@ def display_vacancies(intel):
         st.metric("Last Checked", datetime.now().strftime('%H:%M'))
     
     st.info(f"Found {vacancy_data['total_found']} active vacancies")
-
+        
 def display_borough_summary(results):
     """Display borough sweep summary"""
     
@@ -449,24 +823,33 @@ def display_borough_summary(results):
         st.metric("Avg Quality", f"{avg_quality:.0%}")
 
 # Header
-st.title("⚡ Protocol Education Research Assistant (OPTIMIZED)")
-st.markdown("**70% faster with parallel processing** | Intelligent school research system")
+st.title("Protocol Education Research Assistant")
+st.markdown("**Intelligent school research and contact discovery system**")
 
 # Sidebar
 with st.sidebar:
     st.header("Controls")
     
-    operation_mode = st.radio("Operation Mode", ["Single School", "Borough Sweep"])
-    export_format = st.selectbox("Export Format", ["Excel (.xlsx)", "CSV (.csv)", "JSON (.json)"])
+    operation_mode = st.radio(
+        "Operation Mode",
+        ["Single School", "Borough Sweep"]
+    )
+    
+    export_format = st.selectbox(
+        "Export Format",
+        ["Excel (.xlsx)", "CSV (.csv)", "JSON (.json)"]
+    )
     
     st.divider()
     
+    # Feature toggles
     st.subheader("Features")
     enable_ofsted = st.checkbox("Enhanced Ofsted Analysis", value=True)
     enable_vacancies = st.checkbox("Vacancy Detection", value=True)
     
     st.divider()
     
+    # Cache stats
     if st.button("Show Cache Stats"):
         stats = cache.get_stats()
         st.metric("Active Entries", stats.get('active_entries', 0))
@@ -478,12 +861,9 @@ with st.sidebar:
     
     st.divider()
     
+    # API usage
     usage = processor.ai_engine.get_usage_report()
     st.metric("API Cost Today", f"${usage['total_cost']:.3f}")
-    
-    st.divider()
-    st.success("🚀 PHASE 1 ACTIVE")
-    st.caption("Parallel processing enabled")
 
 # Main content
 if operation_mode == "Single School":
@@ -498,34 +878,39 @@ if operation_mode == "Single School":
     with col2:
         force_refresh = st.checkbox("Force Refresh")
         
-    if st.button("🔍 Search School (FAST)", type="primary"):
+    if st.button("Search School", type="primary"):
         if school_name:
-            start_time = time.time()
-            
-            with st.spinner(f"⚡ Processing {school_name} in parallel..."):
+            with st.spinner(f"Processing {school_name}..."):
                 progress_bar = st.progress(0)
                 status_text = st.empty()
                 
-                status_text.text("Running parallel searches...")
+                status_text.text("Searching...")
                 progress_bar.progress(20)
                 
-                intel = processor.process_single_school(school_name, website_url, force_refresh)
+                intel = processor.process_single_school(
+                    school_name, 
+                    website_url,
+                    force_refresh
+                )
                 
                 progress_bar.progress(100)
-                elapsed = time.time() - start_time
-                status_text.text(f"✅ Complete in {elapsed:.1f}s!")
+                status_text.text("Complete!")
                 time.sleep(0.5)
                 progress_bar.empty()
                 status_text.empty()
             
-            if elapsed < 30:
-                st.success(f"⚡ Completed in {elapsed:.1f}s (70% faster than before!)")
-            
             display_school_intelligence(intel)
             
             if st.button("Export Results"):
-                format_map = {"Excel (.xlsx)": "xlsx", "CSV (.csv)": "csv", "JSON (.json)": "json"}
-                filepath = exporter.export_single_school(intel, format_map[export_format])
+                format_map = {
+                    "Excel (.xlsx)": "xlsx",
+                    "CSV (.csv)": "csv",
+                    "JSON (.json)": "json"
+                }
+                filepath = exporter.export_single_school(
+                    intel, 
+                    format_map[export_format]
+                )
                 st.success(f"Exported to: {filepath}")
 
 elif operation_mode == "Borough Sweep":
@@ -541,12 +926,15 @@ elif operation_mode == "Borough Sweep":
     
     if st.button("Start Borough Sweep", type="primary"):
         if borough_name:
-            with st.spinner(f"Processing {borough_name} schools in parallel..."):
-                results = processor.process_borough(borough_name, school_type.lower())
+            with st.spinner(f"Processing {borough_name} schools..."):
+                results = processor.process_borough(
+                    borough_name,
+                    school_type.lower()
+                )
             
-            st.success(f"✅ Processed {len(results)} schools in parallel!")
+            st.success(f"Processed {len(results)} schools!")
             display_borough_summary(results)
 
-st.divider()
-st.caption("Protocol Education Research Assistant v2.0 - Phase 1 Optimization Active")
-st.caption("⚡ 70% faster with parallel processing | 💰 Same cost | ✅ Zero quality loss")
+if __name__ == "__main__":
+    if not os.path.exists('.env'):
+        st.warning(".env file not found")
