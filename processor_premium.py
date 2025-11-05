@@ -12,7 +12,7 @@ from email_pattern_validator import enhance_contacts_with_emails
 from ofsted_analyzer_v2 import OfstedAnalyzer, integrate_ofsted_analyzer
 from vacancy_detector import integrate_vacancy_detector
 from financial_data_engine import enhance_school_with_financial_data
-from models import (SchoolIntelligence, Contact, ConversationStarter, ContactType)
+from models import SchoolIntelligence, Contact, ConversationStarter, ContactType
 from cache import IntelligenceCache
 
 logger = logging.getLogger(__name__)
