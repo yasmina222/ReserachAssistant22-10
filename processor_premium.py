@@ -2,7 +2,6 @@
 Protocol Education CI System - Premium Processor (FIXED SERIALIZATION)
 CRITICAL FIX: Proper serialization of ConversationStarter objects for caching
 """
-
 import logging
 from typing import Dict, List, Optional, Any
 from datetime import datetime
