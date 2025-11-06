@@ -27,7 +27,7 @@ def check_password():
             st.session_state["password_correct"] = False
 
     if "password_correct" not in st.session_state:
-        st.title("🔒 Supporting Education Group AI Research Assistant")
+        st.title("🔒 SEG AI Research Assistant")
         st.text_input(
             "Enter Password", 
             type="password", 
@@ -37,7 +37,7 @@ def check_password():
         st.caption("Internal access only - Contact IT for credentials")
         return False
     elif not st.session_state["password_correct"]:
-        st.title("🔒 Supporting Education Group AI Research Assistant")
+        st.title("🔒 SEG AI Research Assistant")
         st.text_input(
             "Enter Password", 
             type="password", 
@@ -556,7 +556,7 @@ def display_competitors(intel):
             else:
                 st.write(str(comp))
     else:
-        st.success("✅ No competitor agencies detected")
+        st.success(" No competitor agencies detected")
 
 def display_financial_data(intel):
     """Display financial data and recruitment costs"""
@@ -572,7 +572,7 @@ def display_financial_data(intel):
             entity = financial['entity_found']
             
             if entity['type'] == 'Trust':
-                st.info(f"🏢 Found trust-level financial data for **{entity['name']}** which manages {entity.get('schools_in_trust', 'multiple')} schools including {financial['school_searched']}")
+                st.info(f" Found trust-level financial data for **{entity['name']}** which manages {entity.get('schools_in_trust', 'multiple')} schools including {financial['school_searched']}")
             
             col1, col2, col3 = st.columns(3)
             with col1:
@@ -584,7 +584,7 @@ def display_financial_data(intel):
             with col3:
                 st.write(f"**Match Confidence:** {entity.get('confidence', 0):.0%}")
                 if entity['type'] == 'Trust':
-                    st.write("**Economies of Scale:** ✅")
+                    st.write("**Economies of Scale:**")
         
         st.divider()
         
@@ -592,7 +592,7 @@ def display_financial_data(intel):
             fin_data = financial['financial']
             
             if 'recruitment_estimates' in fin_data:
-                st.subheader("🎯 Annual Recruitment Costs")
+                st.subheader(" Annual Recruitment Costs")
                 estimates = fin_data['recruitment_estimates']
                 
                 if 'total_trust' in estimates:
@@ -604,7 +604,7 @@ def display_financial_data(intel):
                     with col3:
                         st.metric("Savings vs Independent", estimates['economies_of_scale_saving'], help="Cost savings from trust-wide recruitment")
                     if estimates.get('explanation'):
-                        st.success(f"💡 {estimates['explanation']}")
+                        st.success(f" {estimates['explanation']}")
                 else:
                     col1, col2, col3 = st.columns(3)
                     with col1:
@@ -615,7 +615,7 @@ def display_financial_data(intel):
                         st.metric("High Estimate", f"£{estimates['high']:,}")
             
             if 'supply_staff_costs' in fin_data or (fin_data.get('per_school_estimates', {}).get('avg_supply')):
-                st.subheader("💰 Supply Staff Costs")
+                st.subheader(" Supply Staff Costs")
                 if 'per_school_estimates' in fin_data and fin_data['per_school_estimates'].get('avg_supply'):
                     col1, col2 = st.columns(2)
                     with col1:
@@ -634,7 +634,7 @@ def display_financial_data(intel):
                     total = fin_data['recruitment_estimates']['midpoint'] + fin_data.get('supply_staff_costs', 0)
                     st.metric("Total Temporary Staffing Spend", f"£{total:,}", help="Combined recruitment + supply costs")
             
-            with st.expander("📈 Additional Financial Data"):
+            with st.expander(" Additional Financial Data"):
                 col1, col2 = st.columns(2)
                 with col1:
                     if 'teaching_staff_per_pupil' in fin_data:
