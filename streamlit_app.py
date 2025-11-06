@@ -16,42 +16,41 @@ from cache import IntelligenceCache
 from models import ContactType
 
 def check_password():
-    """Returns True if the user had the correct password."""
-
-    def password_entered():
-        """Checks whether a password entered by the user is correct."""
-        if st.session_state["password"] == "SEG2025AI!":
-            st.session_state["password_correct"] = True
-            del st.session_state["password"]
-        else:
-            st.session_state["password_correct"] = False
-
+    """Simple password check that works for anyone - no Streamlit account needed"""
+    
+    # Initialize session state for password
     if "password_correct" not in st.session_state:
-        st.title("🔒 SEG AI Research Assistant")
-        st.text_input(
-            "Enter Password", 
-            type="password", 
-            on_change=password_entered, 
-            key="password"
-        )
-        st.caption("Internal access only - Contact IT for credentials")
-        return False
-    elif not st.session_state["password_correct"]:
-        st.title("🔒 SEG AI Research Assistant")
-        st.text_input(
-            "Enter Password", 
-            type="password", 
-            on_change=password_entered, 
-            key="password"
-        )
-        st.error("❌ Incorrect password")
-        return False
-    else:
+        st.session_state["password_correct"] = False
+    
+    # If already authenticated, allow access
+    if st.session_state["password_correct"]:
         return True
-
-if not check_password():
-    st.stop()
-
+    
+    # Show password form
+    st.title("🔒 SEG AI Research Assistant")
+    st.markdown("### Access Required")
+    st.caption("Internal access only - Contact IT for credentials")
+    
+    # Password input
+    password_input = st.text_input(
+        "Enter Password", 
+        type="password",
+        key="password_input"
+    )
+    
+    # Check password button
+    if st.button("Access System", type="primary"):
+        if password_input == "SEG2025AI!":
+            st.session_state["password_correct"] = True
+            st.success("✅ Access granted! Reloading...")
+            st.rerun()
+        else:
+            st.error("❌ Incorrect password")
+            return False
+    
+    # Block access until password entered
+    return False
+    
 # Page configuration
 st.set_page_config(
     page_title="SEG AI Research Assistant",
