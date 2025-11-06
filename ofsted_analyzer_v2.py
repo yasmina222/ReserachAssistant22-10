@@ -1,6 +1,7 @@
 """
 Protocol Education CI System - Improved Ofsted Analyzer V2
 Extracts BROADER, MORE USEFUL improvements focused on subjects and key areas
+FIXED: Changed from gpt-4-turbo-preview to gpt-4o-mini (98% cost reduction)
 """
 
 import re
@@ -23,6 +24,9 @@ class OfstedAnalyzer:
     def __init__(self, serper_engine, openai_client):
         self.serper = serper_engine
         self.openai = openai_client
+        # CRITICAL FIX: Changed from gpt-4-turbo-preview to gpt-4o-mini
+        self.model = "gpt-4o-mini"
+        logger.info(f"✅ OfstedAnalyzer initialized with model: {self.model}")
         
         # Focus on BROAD improvement categories
         self.broad_improvement_patterns = [
@@ -184,7 +188,7 @@ class OfstedAnalyzer:
                             subject_issues: Dict[str, List[str]],
                             existing_basic_data: Dict[str, Any],
                             report_url: str) -> Dict[str, Any]:
-        """Use GPT to create structured, actionable improvements"""
+        """Use GPT-4o-mini to create structured, actionable improvements"""
         
         # Prepare improvements text
         improvements_text = "\n".join([
@@ -263,8 +267,9 @@ class OfstedAnalyzer:
         """
         
         try:
+            # CRITICAL FIX: Use self.model (gpt-4o-mini) instead of hardcoded gpt-4-turbo-preview
             response = self.openai.chat.completions.create(
-                model="gpt-4-turbo-preview",
+                model=self.model,  # NOW USES gpt-4o-mini
                 messages=[
                     {
                         "role": "system",
@@ -280,12 +285,15 @@ class OfstedAnalyzer:
                 response_format={"type": "json_object"}
             )
             
+            logger.info(f"✅ Used model {self.model} for Ofsted analysis")
+            
             result = json.loads(response.choices[0].message.content)
             
             # Add metadata
             result['report_url'] = report_url
             result['pdf_extracted'] = True
             result['extraction_method'] = 'Broad_Categories_V2'
+            result['model_used'] = self.model
             
             return result
             
@@ -572,7 +580,8 @@ class OfstedAnalyzer:
             'other_key_improvements': improvements_by_rating.get(rating, {}).get('other_key_improvements', {}),
             'report_url': report_url,
             'pdf_extracted': False,
-            'extraction_method': 'Generic_Fallback'
+            'extraction_method': 'Generic_Fallback',
+            'model_used': self.model
         }
         
         return default_response
