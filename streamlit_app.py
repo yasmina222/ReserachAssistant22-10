@@ -17,7 +17,6 @@ from models import ContactType
 
 def check_password():
     """Returns True if the user had the correct password."""
-
     def password_entered():
         """Checks whether a password entered by the user is correct."""
         if st.session_state["password"] == "SEG2025AI!":
@@ -25,7 +24,6 @@ def check_password():
             del st.session_state["password"]
         else:
             st.session_state["password_correct"] = False
-
     if "password_correct" not in st.session_state:
         st.title("🔒 SEG AI Research Assistant")
         st.text_input(
@@ -48,6 +46,16 @@ def check_password():
         return False
     else:
         return True
+
+if not check_password():
+    st.stop()
+    
+# Page configuration
+st.set_page_config(
+    page_title="SEG AI Research Assistant",
+    page_icon="🎓",
+    layout="wide"
+)
     
 # Page configuration
 st.set_page_config(
