@@ -16,7 +16,6 @@ from concurrent.futures import ThreadPoolExecutor
 from ai_engine_premium import PremiumAIEngine
 from email_pattern_validator import enhance_contacts_with_emails
 from ofsted_analyzer_v2 import OfstedAnalyzer, integrate_ofsted_analyzer
-from vacancy_detector import integrate_vacancy_detector
 from financial_data_engine import enhance_school_with_financial_data
 from models import SchoolIntelligence, Contact, ConversationStarter, ContactType
 from cache import IntelligenceCache
@@ -25,7 +24,6 @@ logger = logging.getLogger(__name__)
 
 # Feature flags
 ENABLE_OFSTED_ENHANCEMENT = True
-ENABLE_VACANCY_DETECTION = True
 ENABLE_ASYNC_PROCESSING = True
 ENABLE_FINANCIAL_DATA = True
 
@@ -155,10 +153,6 @@ class PremiumSchoolProcessor:
         if ENABLE_OFSTED_ENHANCEMENT:
             tasks.append(self._run_ofsted_async(intel))
         
-        # Task 3: Vacancy Detection (~5s)
-        if ENABLE_VACANCY_DETECTION:
-            tasks.append(self._run_vacancy_async(intel))
-        
         # Run all tasks in parallel, collect results
         # return_exceptions=True means one failure won't kill the others
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -209,24 +203,6 @@ class PremiumSchoolProcessor:
             logger.error(f"❌ Ofsted enhancement error: {e}")
             return intel
 
-    async def _run_vacancy_async(self, intel: SchoolIntelligence) -> SchoolIntelligence:
-        """Async wrapper for vacancy detection"""
-        
-        try:
-            loop = asyncio.get_event_loop()
-            detect_vacancies = integrate_vacancy_detector(self)
-            enhanced_intel = await loop.run_in_executor(
-                self.executor,
-                detect_vacancies,
-                intel,
-                self.ai_engine
-            )
-            logger.info("✅ Vacancy detection completed")
-            return enhanced_intel
-        except Exception as e:
-            logger.error(f"❌ Vacancy detection error: {e}")
-            return intel
-
     def _process_single_school_sync(self, school_name: str, 
                                    website_url: Optional[str] = None,
                                    force_refresh: bool = False) -> SchoolIntelligence:
@@ -270,14 +246,7 @@ class PremiumSchoolProcessor:
                 intel = enhance_with_ofsted(intel, self.ai_engine)
             except Exception as e:
                 logger.error(f"Ofsted enhancement error: {e}")
-        
-        # Enhancement 3: Vacancy Detection
-        if ENABLE_VACANCY_DETECTION:
-            try:
-                detect_vacancies = integrate_vacancy_detector(self)
-                intel = detect_vacancies(intel, self.ai_engine)
-            except Exception as e:
-                logger.error(f"Vacancy detection error: {e}")
+    
         
         # Sort conversation starters
         intel.conversation_starters.sort(
