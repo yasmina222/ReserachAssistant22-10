@@ -392,7 +392,7 @@ def display_school_intelligence(intel):
     st.divider()
     
     # Create tabs
-    tabs = st.tabs(["Conversation Starters", "Contacts", "Competitors", "Financial Analysis", "Ofsted Analysis", "Vacancies"])
+    tabs = st.tabs(["Conversation Starters", "Contacts", "Competitors", "Financial Analysis", "Ofsted Analysis"])
     
     # Tab 1: Conversation starters
     with tabs[0]:
@@ -413,10 +413,6 @@ def display_school_intelligence(intel):
     # Tab 5: Ofsted Analysis
     with tabs[4]:
         display_ofsted_analysis(intel)
-    
-    # Tab 6: Vacancies
-    with tabs[5]:
-        display_vacancies(intel)
 
 def display_conversation_starters(intel):
     """Display AI-generated conversation starters"""
@@ -719,26 +715,6 @@ def display_ofsted_analysis(intel):
     else:
         if intel.ofsted_rating:
             st.info(f"Ofsted Rating: {intel.ofsted_rating}")
-
-def display_vacancies(intel):
-    """Display vacancy information"""
-    
-    if not hasattr(intel, 'vacancy_data') or not intel.vacancy_data:
-        st.info("No vacancy data available")
-        return
-    
-    vacancy_data = intel.vacancy_data
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("Total Vacancies", vacancy_data['total_found'])
-    with col2:
-        st.metric("Senior Roles", vacancy_data['senior_roles'])
-    with col3:
-        urgency = vacancy_data['analysis']['urgency_level']
-        st.metric("Urgency", urgency.title())
-    with col4:
-        st.metric("Last Checked", datetime.now().strftime('%H:%M'))
-    st.info(f"Found {vacancy_data['total_found']} active vacancies")
 
 def display_borough_summary(results):
     """Display borough sweep summary"""
