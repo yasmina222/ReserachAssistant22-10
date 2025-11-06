@@ -86,13 +86,11 @@ class PremiumSchoolProcessor:
         location = self._extract_location(school_name)
         
         # STEP 1: Basic research (MUST happen first - provides foundation data)
-        loop = asyncio.get_event_loop()
-        research_result = await loop.run_in_executor(
-            self.executor,
-            self.ai_engine.research_school,
-            school_name,
-            location
-        )
+        research_result = await self.ai_engine.research_school_async(
+           school_name,
+           location
+        )                                      
+
         
         logger.info(f"🔍 Research completed in {time.time() - start_time:.2f}s")
         
