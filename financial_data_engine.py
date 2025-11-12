@@ -27,7 +27,7 @@ class FinancialDataEngine:
             {
                 'urn': '141133',
                 'official_name': 'Brookfield School',
-                'trust_name': 'Excellence Academy Trust',  # If school is in a trust
+                'trust_name': 'Excellence Academy Trust',
                 'address': 'Birmingham, B13 0RG',
                 'type': 'Academy',
                 'confidence': 0.95,
@@ -35,7 +35,6 @@ class FinancialDataEngine:
             }
         """
         
-        # Simple search query - just find the school
         search_query = f'"{school_name}"'
         if location:
             search_query += f' {location}'
@@ -43,32 +42,26 @@ class FinancialDataEngine:
         
         logger.info(f"Searching for school URN: {search_query}")
         
-        # Search using Serper
         results = self.serper.search_web(search_query, num_results=5)
         
         if not results:
-            # Try FBIT site as fallback
             return self._search_fbit_direct(school_name, location)
         
-        # Parse results for URN - Extract from URLs and text
         urn_matches = []
         for result in results:
             url = result.get('url', '')
             text = f"{result.get('title', '')} {result.get('snippet', '')}"
             
-            # Skip trust/group pages - we want individual school pages
             if '/Groups/Group/' in url:
                 continue
                 
             urn_from_url = None
             
-            # GIAS pattern for individual schools: /Establishments/Establishment/Details/134225
             gias_match = re.search(r'/Establishments/Establishment/Details/(\d{5,7})', url)
             if gias_match:
                 urn_from_url = gias_match.group(1)
                 logger.info(f"Found URN from GIAS URL: {urn_from_url}")
             
-            # Also check text for URN
             if not urn_from_url:
                 urn_pattern = r'URN:?\s*(\d{5,7})'
                 urn_match = re.search(urn_pattern, text)
@@ -77,13 +70,10 @@ class FinancialDataEngine:
                     logger.info(f"Found URN from text: {urn_from_url}")
             
             if urn_from_url:
-                # Extract school name
                 official_name = self._extract_school_name(result)
                 
-                # Check if school is part of a trust (but don't change URN)
                 trust_name = None
                 if 'trust' in text.lower() or 'academy trust' in text.lower():
-                    # Try to extract trust name
                     trust_pattern = r'Part of\s+([A-Z][A-Za-z\s&]+(?:Trust|Federation))'
                     trust_match = re.search(trust_pattern, text, re.IGNORECASE)
                     if trust_match:
@@ -92,7 +82,7 @@ class FinancialDataEngine:
                 urn_matches.append({
                     'urn': urn_from_url,
                     'official_name': official_name,
-                    'trust_name': trust_name,  # Just for info, not affecting URN
+                    'trust_name': trust_name,
                     'address': self._extract_location(result),
                     'url': url,
                     'confidence': self._calculate_name_match(school_name, result, False)
@@ -102,7 +92,6 @@ class FinancialDataEngine:
             logger.warning(f"No URN found for {school_name}")
             return {'urn': None, 'confidence': 0.0, 'error': 'No URN found'}
         
-        # Sort by confidence and return best match
         urn_matches.sort(key=lambda x: x['confidence'], reverse=True)
         best_match = urn_matches[0]
         best_match['alternatives'] = urn_matches[1:3] if len(urn_matches) > 1 else []
@@ -118,14 +107,12 @@ class FinancialDataEngine:
             logger.error("SCRAPER_API_KEY not found in environment")
             return None
         
-        # Use the URN as-is - don't try to be clever with padding
         base_url = f"https://financial-benchmarking-and-insights-tool.education.gov.uk/school/{urn}"
         
-        # ScraperAPI parameters
         params = {
             'api_key': self.scraper_api_key,
             'url': base_url,
-            'render': 'true',  # Enable JavaScript rendering
+            'render': 'true',
             'country_code': 'gb'
         }
         
@@ -135,13 +122,11 @@ class FinancialDataEngine:
             response = requests.get('http://api.scraperapi.com', params=params, timeout=30)
             
             if response.status_code == 200:
-                # Check if it's actually a valid school page (not a 404 page)
                 if 'Page not found' not in response.text and 'Spending priorities for this school' in response.text:
                     logger.info("Successfully fetched FBIT page")
                     return response.text
                 else:
                     logger.error(f"URN {urn} returned a 404 or invalid page")
-                    # Log first 500 chars for debugging
                     logger.debug(f"Response preview: {response.text[:500]}")
                     return None
             else:
@@ -154,10 +139,119 @@ class FinancialDataEngine:
             logger.error(f"Error fetching FBIT page: {e}")
             return None
     
+    def _fetch_fbit_comparison_page(self, urn: str) -> Optional[str]:
+        """
+        NEW: Fetch FBIT comparison/benchmark page using ScraperAPI
+        URL: https://financial-benchmarking-and-insights-tool.education.gov.uk/school/{urn}/comparison
+        """
+        
+        if not self.scraper_api_key:
+            logger.error("SCRAPER_API_KEY not found in environment")
+            return None
+        
+        comparison_url = f"https://financial-benchmarking-and-insights-tool.education.gov.uk/school/{urn}/comparison"
+        
+        params = {
+            'api_key': self.scraper_api_key,
+            'url': comparison_url,
+            'render': 'true',
+            'country_code': 'gb'
+        }
+        
+        logger.info(f"🔍 Fetching FBIT comparison page: {comparison_url}")
+        
+        try:
+            response = requests.get('http://api.scraperapi.com', params=params, timeout=30)
+            
+            if response.status_code == 200:
+                if 'Page not found' not in response.text:
+                    logger.info("✅ Successfully fetched FBIT comparison page")
+                    return response.text
+                else:
+                    logger.error(f"URN {urn} comparison page not found")
+                    return None
+            else:
+                logger.error(f"ScraperAPI returned status {response.status_code}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error fetching FBIT comparison page: {e}")
+            return None
+    
+    def _parse_benchmark_data(self, html_content: str) -> Dict[str, Any]:
+        """
+        NEW: Parse benchmark comparison data from FBIT comparison page
+        Extracts the 7 critical cost fields
+        """
+        
+        soup = BeautifulSoup(html_content, 'html.parser')
+        benchmark_data = {}
+        
+        logger.info("📊 Parsing benchmark comparison data...")
+        
+        cost_patterns = {
+            'total_expenditure_per_pupil': r'Total\s+expenditure\s+per\s+pupil[:\s]*£([0-9,]+)',
+            'teaching_and_support_costs_per_pupil': r'Total\s+teaching\s+and\s+teaching\s+support\s+staff\s+costs\s+per\s+pupil[:\s]*£([0-9,]+)',
+            'teaching_staff_costs': r'Teaching\s+staff\s+costs[:\s]*£([0-9,]+)',
+            'supply_teaching_staff_costs': r'Supply\s+teaching\s+staff\s+costs[:\s]*£([0-9,]+)',
+            'educational_consultancy_costs': r'Educational\s+consultancy\s+costs[:\s]*£([0-9,]+)',
+            'educational_support_staff_costs': r'Educational\s+support\s+staff\s+costs[:\s]*£([0-9,]+)',
+            'agency_supply_teaching_staff_costs': r'Agency\s+supply\s+teaching\s+staff\s+costs[:\s]*£([0-9,]+)'
+        }
+        
+        page_text = soup.get_text()
+        
+        for field_name, pattern in cost_patterns.items():
+            match = re.search(pattern, page_text, re.IGNORECASE)
+            if match:
+                amount_str = match.group(1).replace(',', '')
+                try:
+                    amount = int(amount_str)
+                    benchmark_data[field_name] = amount
+                    logger.info(f"✅ Found {field_name}: £{amount:,}")
+                except ValueError:
+                    continue
+        
+        tables = soup.find_all('table')
+        for table in tables:
+            rows = table.find_all('tr')
+            for row in rows:
+                cells = row.find_all(['td', 'th'])
+                if len(cells) >= 2:
+                    label = cells[0].get_text(strip=True).lower()
+                    for cell in cells[1:]:
+                        cell_text = cell.get_text(strip=True)
+                        money_match = re.search(r'£([0-9,]+)', cell_text)
+                        if money_match:
+                            amount_str = money_match.group(1).replace(',', '')
+                            try:
+                                amount = int(amount_str)
+                                
+                                if 'total expenditure' in label and 'per pupil' in label:
+                                    benchmark_data['total_expenditure_per_pupil'] = amount
+                                elif 'teaching and teaching support' in label and 'per pupil' in label:
+                                    benchmark_data['teaching_and_support_costs_per_pupil'] = amount
+                                elif 'supply teaching staff' in label and 'agency' not in label:
+                                    benchmark_data['supply_teaching_staff_costs'] = amount
+                                elif 'agency supply' in label:
+                                    benchmark_data['agency_supply_teaching_staff_costs'] = amount
+                                elif 'educational consultancy' in label:
+                                    benchmark_data['educational_consultancy_costs'] = amount
+                                elif 'educational support staff' in label:
+                                    benchmark_data['educational_support_staff_costs'] = amount
+                                elif 'teaching staff' in label and 'support' not in label and 'supply' not in label:
+                                    benchmark_data['teaching_staff_costs'] = amount
+                                
+                            except ValueError:
+                                continue
+        
+        logger.info(f"📊 Extracted {len(benchmark_data)} benchmark data points")
+        return benchmark_data
+    
     def get_financial_data(self, urn: str, entity_name: str = None, is_trust: bool = False) -> Dict[str, Any]:
         """
         Retrieve financial data from FBIT website using URN
-        Now correctly parses the actual HTML structure
+        UPDATED: Now also fetches benchmark comparison data
         """
         
         logger.info(f"Fetching financial data for URN {urn} ({'Trust' if is_trust else 'School'})")
@@ -167,21 +261,18 @@ class FinancialDataEngine:
             'entity_name': entity_name,
             'entity_type': 'Trust' if is_trust else 'School',
             'source_url': f"https://financial-benchmarking-and-insights-tool.education.gov.uk/school/{urn}",
+            'comparison_url': f"https://financial-benchmarking-and-insights-tool.education.gov.uk/school/{urn}/comparison",
             'extracted_date': datetime.now().isoformat()
         }
         
-        # Fetch the actual FBIT page
         html_content = self._fetch_fbit_page(urn)
         
         if not html_content:
-            # Fallback to search approach if scraping fails
             logger.warning("Failed to fetch FBIT page, falling back to search approach")
             return self._get_financial_data_from_search(urn, entity_name, is_trust)
         
-        # Parse the HTML
         soup = BeautifulSoup(html_content, 'html.parser')
         
-        # Extract header financial metrics (In year balance, Revenue reserve)
         headline_figures = soup.find_all('li', class_='app-headline-figures')
         for figure in headline_figures:
             label = figure.find('p', class_='govuk-body-l govuk-!-font-weight-bold')
@@ -191,11 +282,9 @@ class FinancialDataEngine:
                 label_text = label.get_text(strip=True).lower()
                 value_text = value[-1].get_text(strip=True) if value else ''
                 
-                # Parse the value
                 value_match = re.search(r'[-−]?£([\d,]+)', value_text)
                 if value_match:
                     amount = int(value_match.group(1).replace(',', ''))
-                    # Check for negative value
                     if '-' in value_text or '−' in value_text:
                         amount = -amount
                     
@@ -206,32 +295,26 @@ class FinancialDataEngine:
                         financial_data['revenue_reserve'] = amount
                         logger.info(f"Found revenue reserve: £{amount:,}")
         
-        # Extract spending priorities
         priority_wrappers = soup.find_all('div', class_='priority-wrapper')
         
         logger.info(f"Found {len(priority_wrappers)} spending priority items")
         
         for wrapper in priority_wrappers:
-            # Get the category name
             category_elem = wrapper.find('h4', class_='govuk-heading-s')
             if not category_elem:
                 continue
             
             category = category_elem.get_text(strip=True)
-            
-            # Get the spending details
             priority_elem = wrapper.find('p', class_='priority')
             if not priority_elem:
                 continue
             
             text = priority_elem.get_text(strip=True)
             
-            # Extract amount using correct pattern: "Spends £X,XXX per pupil"
             amount_match = re.search(r'Spends\s+£([\d,]+)\s+per\s+pupil', text)
             if amount_match:
                 amount = int(amount_match.group(1).replace(',', ''))
                 
-                # Map categories to our expected fields
                 if 'Teaching' in category and 'staff' in category:
                     financial_data['teaching_staff_per_pupil'] = amount
                     logger.info(f"Found teaching staff costs: £{amount:,} per pupil")
@@ -239,12 +322,10 @@ class FinancialDataEngine:
                     financial_data['admin_supplies_per_pupil'] = amount
                     logger.info(f"Found admin supplies: £{amount:,} per pupil")
                 else:
-                    # Store other costs
                     key = category.lower().replace(' ', '_') + '_per_pupil'
                     financial_data[key] = amount
                     logger.info(f"Found {category}: £{amount:,} per pupil")
             
-            # Check for per square metre costs (utilities)
             sqm_match = re.search(r'Spends\s+£([\d,]+)\s+per\s+square\s+metre', text)
             if sqm_match:
                 amount = int(sqm_match.group(1).replace(',', ''))
@@ -252,25 +333,33 @@ class FinancialDataEngine:
                     financial_data['utilities_per_sqm'] = amount
                     logger.info(f"Found utilities: £{amount:,} per square metre")
         
-        # Look for additional financial data in other sections
-        # Try to find supply staff costs and indirect employee expenses
+        logger.info("🔍 Fetching benchmark comparison data...")
+        comparison_html = self._fetch_fbit_comparison_page(urn)
+        
+        if comparison_html:
+            benchmark_data = self._parse_benchmark_data(comparison_html)
+            
+            if benchmark_data:
+                financial_data['benchmark_data'] = benchmark_data
+                logger.info(f"✅ Added {len(benchmark_data)} benchmark metrics")
+            else:
+                logger.warning("⚠️ No benchmark data extracted")
+        else:
+            logger.warning("⚠️ Could not fetch comparison page")
+        
         all_text = soup.get_text()
         
-        # Search for supply staff costs in the full page
         supply_match = re.search(r'Supply\s+staff\s+costs?[:\s]+£?([\d,]+)', all_text, re.IGNORECASE)
         if supply_match:
             financial_data['supply_staff_costs'] = int(supply_match.group(1).replace(',', ''))
             logger.info(f"Found supply staff costs: £{financial_data['supply_staff_costs']:,}")
         
-        # Search for indirect employee expenses
         indirect_match = re.search(r'Indirect\s+employee\s+expenses?[:\s]+£?([\d,]+)', all_text, re.IGNORECASE)
         if indirect_match:
             financial_data['indirect_employee_expenses'] = int(indirect_match.group(1).replace(',', ''))
             logger.info(f"Found indirect employee expenses: £{financial_data['indirect_employee_expenses']:,}")
         
-        # Calculate recruitment estimates
         if 'indirect_employee_expenses' in financial_data:
-            # For trusts, show total and per-school breakdown
             if is_trust and hasattr(self, '_last_schools_count') and self._last_schools_count:
                 schools = self._last_schools_count
                 total_recruitment = int(financial_data['indirect_employee_expenses'] * 0.25)
@@ -287,16 +376,13 @@ class FinancialDataEngine:
                     'avg_supply': int(financial_data.get('supply_staff_costs', 0) / schools) if financial_data.get('supply_staff_costs') else None
                 }
             else:
-                # School-level estimates
                 financial_data['recruitment_estimates'] = {
                     'low': int(financial_data['indirect_employee_expenses'] * 0.2),
                     'high': int(financial_data['indirect_employee_expenses'] * 0.3),
                     'midpoint': int(financial_data['indirect_employee_expenses'] * 0.25)
                 }
         elif 'teaching_staff_per_pupil' in financial_data:
-            # Estimate based on teaching costs if no indirect expenses found
-            # Typically recruitment is 3-5% of teaching costs
-            teaching_total_estimate = financial_data['teaching_staff_per_pupil'] * 200  # Assume ~200 pupils
+            teaching_total_estimate = financial_data['teaching_staff_per_pupil'] * 200
             financial_data['recruitment_estimates'] = {
                 'low': int(teaching_total_estimate * 0.03),
                 'high': int(teaching_total_estimate * 0.05),
@@ -304,7 +390,6 @@ class FinancialDataEngine:
                 'note': 'Estimated from teaching costs'
             }
         
-        # Add extraction confidence score
         financial_data['extraction_confidence'] = self._calculate_extraction_confidence(financial_data)
         
         return financial_data
@@ -318,13 +403,17 @@ class FinancialDataEngine:
         optional_fields = ['admin_supplies_per_pupil', 'utilities_per_sqm', 'supply_staff_costs', 'indirect_employee_expenses']
         found_optional = sum(1 for field in optional_fields if field in data and data[field] is not None)
         
-        # Calculate confidence (essential fields worth more)
-        confidence = (found_essential / len(essential_fields)) * 0.7 + (found_optional / len(optional_fields)) * 0.3
+        benchmark_bonus = 0
+        if 'benchmark_data' in data and data['benchmark_data']:
+            benchmark_count = len(data['benchmark_data'])
+            benchmark_bonus = min(benchmark_count / 7, 1.0) * 0.2
+        
+        confidence = (found_essential / len(essential_fields)) * 0.5 + (found_optional / len(optional_fields)) * 0.3 + benchmark_bonus
         
         return round(confidence, 2)
     
     def _get_financial_data_from_search(self, urn: str, entity_name: str, is_trust: bool) -> Dict[str, Any]:
-        """Fallback method using search (original approach)"""
+        """Fallback method using search"""
         
         base_url = f"https://financial-benchmarking-and-insights-tool.education.gov.uk/school/{urn}"
         
@@ -337,7 +426,6 @@ class FinancialDataEngine:
             'data_source': 'search_fallback'
         }
         
-        # Search for specific pages
         search_queries = [
             f'site:financial-benchmarking-and-insights-tool.education.gov.uk/school/{urn} "Spends" "per pupil"',
             f'site:financial-benchmarking-and-insights-tool.education.gov.uk/school/{urn} "In year balance" "Revenue reserve"'
@@ -347,10 +435,8 @@ class FinancialDataEngine:
             results = self.serper.search_web(query, num_results=3)
             
             if results:
-                # Combine all snippets
                 all_content = ' '.join([r.get('snippet', '') for r in results])
                 
-                # Extract values with updated patterns
                 patterns = {
                     'teaching_staff_per_pupil': r'Teaching.*?staff.*?Spends\s+£([\d,]+)\s+per\s+pupil',
                     'admin_supplies_per_pupil': r'Administrative\s+supplies.*?Spends\s+£([\d,]+)\s+per\s+pupil',
@@ -365,7 +451,6 @@ class FinancialDataEngine:
                         value_str = match.group(1).replace(',', '')
                         financial_data[key] = int(value_str)
                         
-                        # Handle negative balance
                         if key == 'in_year_balance' and ('−' in all_content[max(0, match.start()-10):match.start()] or '-' in all_content[max(0, match.start()-10):match.start()]):
                             financial_data[key] = -financial_data[key]
         
@@ -374,10 +459,8 @@ class FinancialDataEngine:
     def get_recruitment_intelligence(self, school_name: str, location: Optional[str] = None) -> Dict[str, Any]:
         """
         Complete recruitment cost intelligence for a school
-        SIMPLIFIED - Just get school financial data, not trust data
         """
         
-        # Step 1: Get school URN (not trust URN)
         urn_result = self.get_school_urn(school_name, location)
         
         if not urn_result.get('urn'):
@@ -388,14 +471,12 @@ class FinancialDataEngine:
         
         logger.info(f"Found URN {urn_result['urn']} for {urn_result['official_name']}")
         
-        # Step 2: Get financial data for this specific school
         financial_data = self.get_financial_data(
             urn_result['urn'],
             urn_result['official_name'],
-            False  # Always False - we want school data, not trust data
+            False
         )
         
-        # Step 3: Combine and enhance
         intelligence = {
             'school_searched': school_name,
             'entity_found': {
@@ -403,38 +484,34 @@ class FinancialDataEngine:
                 'type': 'School',
                 'urn': urn_result['urn'],
                 'location': urn_result.get('address', ''),
-                'trust_name': urn_result.get('trust_name'),  # Just for info
+                'trust_name': urn_result.get('trust_name'),
                 'confidence': urn_result['confidence']
             },
             'financial': financial_data,
-            'insights': self._generate_insights(financial_data, False),  # Always school-level
+            'insights': self._generate_insights(financial_data, False),
             'comparison': self._get_benchmarks(financial_data),
             'conversation_starters': self._generate_cost_conversations(
                 financial_data, 
-                None,  # Don't use trust name in conversations
-                None   # Don't use schools count
+                None,
+                None
             )
         }
         
         return intelligence
     
     def _calculate_name_match(self, search_name: str, result: Dict, is_trust: bool) -> float:
-        """Calculate confidence score for name match - now preferring trusts"""
+        """Calculate confidence score for name match"""
         result_name = self._extract_school_name(result).lower()
         search_name = search_name.lower()
         
-        # Boost confidence for trust results
         base_confidence = 0.7 if is_trust else 0.5
         
-        # Exact match
         if search_name == result_name:
             return 1.0
         
-        # Contains match
         if search_name in result_name or result_name in search_name:
             return base_confidence + 0.2
         
-        # Partial word match
         search_words = set(search_name.split())
         result_words = set(result_name.split())
         common_words = search_words.intersection(result_words)
@@ -445,8 +522,20 @@ class FinancialDataEngine:
         return base_confidence - 0.2
     
     def _generate_insights(self, financial_data: Dict, is_trust: bool) -> List[str]:
-        """Generate insights from financial data - now trust-aware"""
+        """Generate insights from financial data"""
         insights = []
+        
+        if 'benchmark_data' in financial_data and financial_data['benchmark_data']:
+            benchmark = financial_data['benchmark_data']
+            
+            if 'total_expenditure_per_pupil' in benchmark:
+                insights.append(f"Total expenditure: £{benchmark['total_expenditure_per_pupil']:,} per pupil")
+            
+            if 'supply_teaching_staff_costs' in benchmark:
+                insights.append(f"Supply teaching staff: £{benchmark['supply_teaching_staff_costs']:,} (opportunity for cost reduction)")
+            
+            if 'agency_supply_teaching_staff_costs' in benchmark:
+                insights.append(f"Agency supply costs: £{benchmark['agency_supply_teaching_staff_costs']:,} (high-priority target)")
         
         if is_trust and 'recruitment_estimates' in financial_data:
             est = financial_data['recruitment_estimates']
@@ -460,7 +549,6 @@ class FinancialDataEngine:
                     insights.append(f"Average supply costs per school: £{supply_per:,}")
         
         elif 'recruitment_estimates' in financial_data:
-            # School-level insights
             est = financial_data['recruitment_estimates']
             if 'midpoint' in est:
                 midpoint = est['midpoint']
@@ -474,7 +562,6 @@ class FinancialDataEngine:
                 total_temp_costs = est.get('midpoint', 0) + supply
                 insights.append(f"Total temporary staffing costs: £{total_temp_costs:,}")
         
-        # Add balance insights
         if 'in_year_balance' in financial_data:
             balance = financial_data['in_year_balance']
             if balance < 0:
@@ -482,7 +569,6 @@ class FinancialDataEngine:
             else:
                 insights.append(f"School has a surplus of £{balance:,}")
         
-        # Add per-pupil spending insights
         if 'teaching_staff_per_pupil' in financial_data:
             teaching = financial_data['teaching_staff_per_pupil']
             insights.append(f"Teaching staff costs: £{teaching:,} per pupil")
@@ -490,8 +576,24 @@ class FinancialDataEngine:
         return insights
     
     def _generate_cost_conversations(self, financial_data: Dict, trust_name: str = None, schools_count: int = None) -> List[str]:
-        """Generate conversation starters about costs - now trust-aware"""
+        """Generate conversation starters about costs"""
         starters = []
+        
+        if 'benchmark_data' in financial_data and financial_data['benchmark_data']:
+            benchmark = financial_data['benchmark_data']
+            
+            if benchmark.get('agency_supply_teaching_staff_costs', 0) > 0:
+                starters.append(
+                    f"I noticed you're spending £{benchmark['agency_supply_teaching_staff_costs']:,} on agency supply staff. "
+                    f"Protocol Education offers competitive rates and exclusive arrangements that could reduce this by 20-30%. "
+                    f"We guarantee quality and continuity that agencies often struggle to provide."
+                )
+            
+            if benchmark.get('supply_teaching_staff_costs', 0) > 0:
+                starters.append(
+                    f"Your supply teaching costs of £{benchmark['supply_teaching_staff_costs']:,} suggest regular staffing gaps. "
+                    f"Have you considered our long-term supply solutions? Many schools find they save 15-25% compared to daily booking."
+                )
         
         if trust_name and 'recruitment_estimates' in financial_data:
             est = financial_data['recruitment_estimates']
@@ -509,7 +611,6 @@ class FinancialDataEngine:
                     )
         
         elif 'recruitment_estimates' in financial_data:
-            # School-level starters
             est = financial_data['recruitment_estimates']
             if 'midpoint' in est:
                 cost = est['midpoint']
@@ -518,7 +619,6 @@ class FinancialDataEngine:
                     "Protocol Education could help reduce these costs through our competitive rates and quality guarantee."
                 )
         
-        # Supply staff conversation starters
         if 'supply_staff_costs' in financial_data:
             supply = financial_data['supply_staff_costs']
             if trust_name:
@@ -532,7 +632,6 @@ class FinancialDataEngine:
                     "staffing solutions and competitive daily rates."
                 )
         
-        # Balance-related starters
         if 'in_year_balance' in financial_data:
             balance = financial_data['in_year_balance']
             if balance < 0:
@@ -541,10 +640,9 @@ class FinancialDataEngine:
                     "Protocol Education can help reduce recruitment costs as part of your financial recovery plan."
                 )
         
-        # Teaching cost insights
         if 'teaching_staff_per_pupil' in financial_data:
             teaching = financial_data['teaching_staff_per_pupil']
-            if teaching > 5000:  # High spending threshold
+            if teaching > 5000:
                 starters.append(
                     f"With teaching costs at £{teaching:,} per pupil, ensuring value in recruitment "
                     "is crucial. Protocol's quality guarantee ensures you get the best teachers at competitive rates."
@@ -555,14 +653,12 @@ class FinancialDataEngine:
     def _extract_school_name(self, search_result: Dict) -> str:
         """Extract official school name from search result"""
         title = search_result.get('title', '')
-        # Remove common suffixes
         name = re.split(r' - URN:| - Get Information| - GOV.UK', title)[0]
         return name.strip()
     
     def _extract_location(self, search_result: Dict) -> str:
         """Extract location from search result"""
         snippet = search_result.get('snippet', '')
-        # Look for postcode pattern
         postcode_match = re.search(r'[A-Z]{1,2}\d{1,2}\s?\d[A-Z]{2}', snippet)
         if postcode_match:
             return postcode_match.group()
@@ -577,7 +673,6 @@ class FinancialDataEngine:
         results = self.serper.search_web(search_query, num_results=3)
         
         for result in results:
-            # Extract URN from FBIT URL
             url = result.get('url', '')
             urn_match = re.search(r'/school/(\d{5,7})', url)
             if urn_match:
@@ -602,37 +697,32 @@ class FinancialDataEngine:
             'comparison': {}
         }
         
-        # Compare with benchmarks
         if 'teaching_staff_per_pupil' in financial_data:
             teaching = financial_data['teaching_staff_per_pupil']
             avg = benchmarks['national_average']['teaching_per_pupil']
             diff_pct = ((teaching - avg) / avg) * 100
             benchmarks['comparison']['teaching_vs_average'] = f"{'+' if diff_pct > 0 else ''}{diff_pct:.1f}%"
         
+        if 'benchmark_data' in financial_data and financial_data['benchmark_data']:
+            benchmarks['school_benchmark_data'] = financial_data['benchmark_data']
+        
         return benchmarks
 
-# Integration function for the premium processor - OUTSIDE THE CLASS
+
 def enhance_school_with_financial_data(intel, serper_engine):
     """
     Add financial data to existing school intelligence
-    
-    Args:
-        intel: SchoolIntelligence object
-        serper_engine: Existing PremiumAIEngine instance
     """
     
     try:
         financial_engine = FinancialDataEngine(serper_engine)
         
-        # Get recruitment cost intelligence
         financial_intel = financial_engine.get_recruitment_intelligence(
             intel.school_name,
             intel.address
         )
         
-        # Add to existing intelligence
         if not financial_intel.get('error'):
-            # Add financial insights to conversation starters
             if 'conversation_starters' in financial_intel:
                 for starter in financial_intel['conversation_starters']:
                     intel.conversation_starters.append(
@@ -644,10 +734,9 @@ def enhance_school_with_financial_data(intel, serper_engine):
                         )
                     )
             
-            # Store financial data in intel object
             intel.financial_data = financial_intel
             
-            logger.info(f"Successfully enhanced {intel.school_name} with financial data")
+            logger.info(f"✅ Successfully enhanced {intel.school_name} with financial data")
         else:
             logger.warning(f"Could not get financial data for {intel.school_name}: {financial_intel.get('error')}")
     
