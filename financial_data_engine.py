@@ -7,6 +7,7 @@ from typing import Dict, Optional, Tuple, List, Any
 from datetime import datetime
 from models import ConversationStarter
 from bs4 import BeautifulSoup
+from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
@@ -18,22 +19,17 @@ class FinancialDataEngine:
         self.serper = serper_engine
         self.scraper_api_key = os.getenv('SCRAPER_API_KEY')
         
-    def get_school_urn(self, school_name: str, location: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Find school URN using government database
-        SIMPLIFIED VERSION - Just find the school's URN, not trust URN
+        # Initialize OpenAI client for GPT extraction
+        try:
+            import streamlit as st
+            openai_key = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
+        except:
+            openai_key = os.getenv("OPENAI_API_KEY")
         
-        Returns:
-            {
-                'urn': '141133',
-                'official_name': 'Brookfield School',
-                'trust_name': 'Excellence Academy Trust',
-                'address': 'Birmingham, B13 0RG',
-                'type': 'Academy',
-                'confidence': 0.95,
-                'alternatives': []
-            }
-        """
+        self.openai_client = OpenAI(api_key=openai_key)
+        
+    def get_school_urn(self, school_name: str, location: Optional[str] = None) -> Dict[str, Any]:
+        """Find school URN using government database"""
         
         search_query = f'"{school_name}"'
         if location:
@@ -96,7 +92,7 @@ class FinancialDataEngine:
         best_match = urn_matches[0]
         best_match['alternatives'] = urn_matches[1:3] if len(urn_matches) > 1 else []
         
-        logger.info(f"Best URN match: {best_match['urn']} for {best_match['official_name']} (confidence: {best_match['confidence']:.2f})")
+        logger.info(f"Best URN match: {best_match['urn']} for {best_match['official_name']}")
         
         return best_match
     
@@ -122,17 +118,14 @@ class FinancialDataEngine:
             response = requests.get('http://api.scraperapi.com', params=params, timeout=30)
             
             if response.status_code == 200:
-                if 'Page not found' not in response.text and 'Spending priorities for this school' in response.text:
-                    logger.info("Successfully fetched FBIT page")
+                if 'Page not found' not in response.text:
+                    logger.info("✅ Successfully fetched FBIT page")
                     return response.text
                 else:
                     logger.error(f"URN {urn} returned a 404 or invalid page")
-                    logger.debug(f"Response preview: {response.text[:500]}")
                     return None
             else:
                 logger.error(f"ScraperAPI returned status {response.status_code}")
-                if response.text:
-                    logger.debug(f"Response: {response.text[:500]}")
                 return None
                 
         except Exception as e:
@@ -141,8 +134,7 @@ class FinancialDataEngine:
     
     def _fetch_fbit_comparison_page(self, urn: str) -> Optional[str]:
         """
-        NEW: Fetch FBIT comparison/benchmark page using ScraperAPI
-        URL: https://financial-benchmarking-and-insights-tool.education.gov.uk/school/{urn}/comparison
+        Fetch FBIT comparison page using ScraperAPI
         """
         
         if not self.scraper_api_key:
@@ -164,12 +156,8 @@ class FinancialDataEngine:
             response = requests.get('http://api.scraperapi.com', params=params, timeout=30)
             
             if response.status_code == 200:
-                if 'Page not found' not in response.text:
-                    logger.info("✅ Successfully fetched FBIT comparison page")
-                    return response.text
-                else:
-                    logger.error(f"URN {urn} comparison page not found")
-                    return None
+                logger.info("✅ Successfully fetched FBIT comparison page")
+                return response.text
             else:
                 logger.error(f"ScraperAPI returned status {response.status_code}")
                 return None
@@ -178,83 +166,90 @@ class FinancialDataEngine:
             logger.error(f"Error fetching FBIT comparison page: {e}")
             return None
     
-    def _parse_benchmark_data(self, html_content: str) -> Dict[str, Any]:
+    def _extract_benchmark_with_gpt(self, html_content: str, urn: str) -> Dict[str, Any]:
         """
-        NEW: Parse benchmark comparison data from FBIT comparison page
-        Extracts the 7 critical cost fields
+        NEW: Use GPT-4o-mini to extract benchmark data from HTML
+        This is more reliable than parsing HTML structure
         """
         
-        soup = BeautifulSoup(html_content, 'html.parser')
-        benchmark_data = {}
+        logger.info("🤖 Using GPT-4o-mini to extract benchmark data...")
         
-        logger.info("📊 Parsing benchmark comparison data...")
+        # Truncate HTML if too long (keep first 50K chars which should contain the data)
+        html_snippet = html_content[:50000] if len(html_content) > 50000 else html_content
         
-        cost_patterns = {
-            'total_expenditure_per_pupil': r'Total\s+expenditure\s+per\s+pupil[:\s]*£([0-9,]+)',
-            'teaching_and_support_costs_per_pupil': r'Total\s+teaching\s+and\s+teaching\s+support\s+staff\s+costs\s+per\s+pupil[:\s]*£([0-9,]+)',
-            'teaching_staff_costs': r'Teaching\s+staff\s+costs[:\s]*£([0-9,]+)',
-            'supply_teaching_staff_costs': r'Supply\s+teaching\s+staff\s+costs[:\s]*£([0-9,]+)',
-            'educational_consultancy_costs': r'Educational\s+consultancy\s+costs[:\s]*£([0-9,]+)',
-            'educational_support_staff_costs': r'Educational\s+support\s+staff\s+costs[:\s]*£([0-9,]+)',
-            'agency_supply_teaching_staff_costs': r'Agency\s+supply\s+teaching\s+staff\s+costs[:\s]*£([0-9,]+)'
-        }
+        prompt = f"""
+Extract the following financial data from this UK school's FBIT comparison page HTML.
+
+CRITICAL: Return ONLY valid JSON with these exact field names. Use null for any missing values.
+
+Required fields (all are annual costs in pounds £):
+1. total_expenditure_per_pupil
+2. teaching_and_support_costs_per_pupil  
+3. teaching_staff_costs
+4. supply_teaching_staff_costs
+5. educational_consultancy_costs
+6. educational_support_staff_costs
+7. agency_supply_teaching_staff_costs
+
+Return format:
+{{
+    "total_expenditure_per_pupil": 7200,
+    "teaching_and_support_costs_per_pupil": 5100,
+    "teaching_staff_costs": 950000,
+    "supply_teaching_staff_costs": 85000,
+    "educational_consultancy_costs": 15000,
+    "educational_support_staff_costs": 180000,
+    "agency_supply_teaching_staff_costs": 42000
+}}
+
+HTML content:
+{html_snippet}
+
+Return ONLY the JSON object, no explanations.
+"""
         
-        page_text = soup.get_text()
-        
-        for field_name, pattern in cost_patterns.items():
-            match = re.search(pattern, page_text, re.IGNORECASE)
-            if match:
-                amount_str = match.group(1).replace(',', '')
-                try:
-                    amount = int(amount_str)
-                    benchmark_data[field_name] = amount
-                    logger.info(f"✅ Found {field_name}: £{amount:,}")
-                except ValueError:
-                    continue
-        
-        tables = soup.find_all('table')
-        for table in tables:
-            rows = table.find_all('tr')
-            for row in rows:
-                cells = row.find_all(['td', 'th'])
-                if len(cells) >= 2:
-                    label = cells[0].get_text(strip=True).lower()
-                    for cell in cells[1:]:
-                        cell_text = cell.get_text(strip=True)
-                        money_match = re.search(r'£([0-9,]+)', cell_text)
-                        if money_match:
-                            amount_str = money_match.group(1).replace(',', '')
-                            try:
-                                amount = int(amount_str)
-                                
-                                if 'total expenditure' in label and 'per pupil' in label:
-                                    benchmark_data['total_expenditure_per_pupil'] = amount
-                                elif 'teaching and teaching support' in label and 'per pupil' in label:
-                                    benchmark_data['teaching_and_support_costs_per_pupil'] = amount
-                                elif 'supply teaching staff' in label and 'agency' not in label:
-                                    benchmark_data['supply_teaching_staff_costs'] = amount
-                                elif 'agency supply' in label:
-                                    benchmark_data['agency_supply_teaching_staff_costs'] = amount
-                                elif 'educational consultancy' in label:
-                                    benchmark_data['educational_consultancy_costs'] = amount
-                                elif 'educational support staff' in label:
-                                    benchmark_data['educational_support_staff_costs'] = amount
-                                elif 'teaching staff' in label and 'support' not in label and 'supply' not in label:
-                                    benchmark_data['teaching_staff_costs'] = amount
-                                
-                            except ValueError:
-                                continue
-        
-        logger.info(f"📊 Extracted {len(benchmark_data)} benchmark data points")
-        return benchmark_data
+        try:
+            response = self.openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You extract financial data from HTML. Return only valid JSON with numeric values (no currency symbols, no commas). Use null for missing data."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                temperature=0.1,
+                max_tokens=500,
+                response_format={"type": "json_object"}
+            )
+            
+            result_text = response.choices[0].message.content
+            benchmark_data = json.loads(result_text)
+            
+            # Log what we found
+            found_count = sum(1 for v in benchmark_data.values() if v is not None and v != "null")
+            logger.info(f"✅ GPT extracted {found_count}/7 benchmark fields")
+            
+            for key, value in benchmark_data.items():
+                if value and value != "null":
+                    logger.info(f"  ✓ {key}: £{value:,}")
+            
+            return benchmark_data
+            
+        except Exception as e:
+            logger.error(f"❌ GPT extraction failed: {e}")
+            return {}
     
     def get_financial_data(self, urn: str, entity_name: str = None, is_trust: bool = False) -> Dict[str, Any]:
         """
         Retrieve financial data from FBIT website using URN
-        UPDATED: Now also fetches benchmark comparison data
+        UPDATED: Now uses GPT-4o-mini to extract benchmark data
         """
         
-        logger.info(f"Fetching financial data for URN {urn} ({'Trust' if is_trust else 'School'})")
+        logger.info(f"Fetching financial data for URN {urn}")
         
         financial_data = {
             'urn': urn,
@@ -268,11 +263,12 @@ class FinancialDataEngine:
         html_content = self._fetch_fbit_page(urn)
         
         if not html_content:
-            logger.warning("Failed to fetch FBIT page, falling back to search approach")
-            return self._get_financial_data_from_search(urn, entity_name, is_trust)
+            logger.warning("Failed to fetch FBIT page")
+            return financial_data
         
         soup = BeautifulSoup(html_content, 'html.parser')
         
+        # Extract basic financial metrics from main page
         headline_figures = soup.find_all('li', class_='app-headline-figures')
         for figure in headline_figures:
             label = figure.find('p', class_='govuk-body-l govuk-!-font-weight-bold')
@@ -290,176 +286,46 @@ class FinancialDataEngine:
                     
                     if 'in year balance' in label_text:
                         financial_data['in_year_balance'] = amount
-                        logger.info(f"Found in year balance: £{amount:,}")
                     elif 'revenue reserve' in label_text:
                         financial_data['revenue_reserve'] = amount
-                        logger.info(f"Found revenue reserve: £{amount:,}")
         
-        priority_wrappers = soup.find_all('div', class_='priority-wrapper')
-        
-        logger.info(f"Found {len(priority_wrappers)} spending priority items")
-        
-        for wrapper in priority_wrappers:
-            category_elem = wrapper.find('h4', class_='govuk-heading-s')
-            if not category_elem:
-                continue
-            
-            category = category_elem.get_text(strip=True)
-            priority_elem = wrapper.find('p', class_='priority')
-            if not priority_elem:
-                continue
-            
-            text = priority_elem.get_text(strip=True)
-            
-            amount_match = re.search(r'Spends\s+£([\d,]+)\s+per\s+pupil', text)
-            if amount_match:
-                amount = int(amount_match.group(1).replace(',', ''))
-                
-                if 'Teaching' in category and 'staff' in category:
-                    financial_data['teaching_staff_per_pupil'] = amount
-                    logger.info(f"Found teaching staff costs: £{amount:,} per pupil")
-                elif 'Administrative supplies' in category:
-                    financial_data['admin_supplies_per_pupil'] = amount
-                    logger.info(f"Found admin supplies: £{amount:,} per pupil")
-                else:
-                    key = category.lower().replace(' ', '_') + '_per_pupil'
-                    financial_data[key] = amount
-                    logger.info(f"Found {category}: £{amount:,} per pupil")
-            
-            sqm_match = re.search(r'Spends\s+£([\d,]+)\s+per\s+square\s+metre', text)
-            if sqm_match:
-                amount = int(sqm_match.group(1).replace(',', ''))
-                if 'Utilities' in category:
-                    financial_data['utilities_per_sqm'] = amount
-                    logger.info(f"Found utilities: £{amount:,} per square metre")
-        
+        # NEW: Fetch comparison page and use GPT to extract
         logger.info("🔍 Fetching benchmark comparison data...")
         comparison_html = self._fetch_fbit_comparison_page(urn)
         
         if comparison_html:
-            benchmark_data = self._parse_benchmark_data(comparison_html)
+            benchmark_data = self._extract_benchmark_with_gpt(comparison_html, urn)
             
             if benchmark_data:
                 financial_data['benchmark_data'] = benchmark_data
-                logger.info(f"✅ Added {len(benchmark_data)} benchmark metrics")
+                logger.info(f"✅ Added benchmark data with {len(benchmark_data)} fields")
             else:
                 logger.warning("⚠️ No benchmark data extracted")
         else:
             logger.warning("⚠️ Could not fetch comparison page")
         
-        all_text = soup.get_text()
-        
-        supply_match = re.search(r'Supply\s+staff\s+costs?[:\s]+£?([\d,]+)', all_text, re.IGNORECASE)
-        if supply_match:
-            financial_data['supply_staff_costs'] = int(supply_match.group(1).replace(',', ''))
-            logger.info(f"Found supply staff costs: £{financial_data['supply_staff_costs']:,}")
-        
-        indirect_match = re.search(r'Indirect\s+employee\s+expenses?[:\s]+£?([\d,]+)', all_text, re.IGNORECASE)
-        if indirect_match:
-            financial_data['indirect_employee_expenses'] = int(indirect_match.group(1).replace(',', ''))
-            logger.info(f"Found indirect employee expenses: £{financial_data['indirect_employee_expenses']:,}")
-        
-        if 'indirect_employee_expenses' in financial_data:
-            if is_trust and hasattr(self, '_last_schools_count') and self._last_schools_count:
-                schools = self._last_schools_count
-                total_recruitment = int(financial_data['indirect_employee_expenses'] * 0.25)
-                
-                financial_data['recruitment_estimates'] = {
-                    'total_trust': total_recruitment,
-                    'per_school_avg': int(total_recruitment / schools),
-                    'economies_of_scale_saving': '35-45%',
-                    'explanation': f"Trust-wide recruitment for {schools} schools provides significant cost savings"
-                }
-                
-                financial_data['per_school_estimates'] = {
-                    'avg_indirect_employee': int(financial_data['indirect_employee_expenses'] / schools),
-                    'avg_supply': int(financial_data.get('supply_staff_costs', 0) / schools) if financial_data.get('supply_staff_costs') else None
-                }
-            else:
-                financial_data['recruitment_estimates'] = {
-                    'low': int(financial_data['indirect_employee_expenses'] * 0.2),
-                    'high': int(financial_data['indirect_employee_expenses'] * 0.3),
-                    'midpoint': int(financial_data['indirect_employee_expenses'] * 0.25)
-                }
-        elif 'teaching_staff_per_pupil' in financial_data:
-            teaching_total_estimate = financial_data['teaching_staff_per_pupil'] * 200
-            financial_data['recruitment_estimates'] = {
-                'low': int(teaching_total_estimate * 0.03),
-                'high': int(teaching_total_estimate * 0.05),
-                'midpoint': int(teaching_total_estimate * 0.04),
-                'note': 'Estimated from teaching costs'
-            }
-        
-        financial_data['extraction_confidence'] = self._calculate_extraction_confidence(financial_data)
-        
-        return financial_data
-    
-    def _calculate_extraction_confidence(self, data: Dict[str, Any]) -> float:
-        """Calculate confidence score for extracted data"""
-        
-        essential_fields = ['teaching_staff_per_pupil', 'in_year_balance', 'revenue_reserve']
-        found_essential = sum(1 for field in essential_fields if field in data and data[field] is not None)
-        
-        optional_fields = ['admin_supplies_per_pupil', 'utilities_per_sqm', 'supply_staff_costs', 'indirect_employee_expenses']
-        found_optional = sum(1 for field in optional_fields if field in data and data[field] is not None)
-        
-        benchmark_bonus = 0
-        if 'benchmark_data' in data and data['benchmark_data']:
-            benchmark_count = len(data['benchmark_data'])
-            benchmark_bonus = min(benchmark_count / 7, 1.0) * 0.2
-        
-        confidence = (found_essential / len(essential_fields)) * 0.5 + (found_optional / len(optional_fields)) * 0.3 + benchmark_bonus
-        
-        return round(confidence, 2)
-    
-    def _get_financial_data_from_search(self, urn: str, entity_name: str, is_trust: bool) -> Dict[str, Any]:
-        """Fallback method using search"""
-        
-        base_url = f"https://financial-benchmarking-and-insights-tool.education.gov.uk/school/{urn}"
-        
-        financial_data = {
-            'urn': urn,
-            'entity_name': entity_name,
-            'entity_type': 'Trust' if is_trust else 'School',
-            'source_url': base_url,
-            'extracted_date': datetime.now().isoformat(),
-            'data_source': 'search_fallback'
-        }
-        
-        search_queries = [
-            f'site:financial-benchmarking-and-insights-tool.education.gov.uk/school/{urn} "Spends" "per pupil"',
-            f'site:financial-benchmarking-and-insights-tool.education.gov.uk/school/{urn} "In year balance" "Revenue reserve"'
-        ]
-        
-        for query in search_queries:
-            results = self.serper.search_web(query, num_results=3)
+        # Calculate recruitment estimates
+        if 'benchmark_data' in financial_data:
+            benchmark = financial_data['benchmark_data']
             
-            if results:
-                all_content = ' '.join([r.get('snippet', '') for r in results])
+            # Use supply costs from benchmark data
+            supply_costs = benchmark.get('supply_teaching_staff_costs')
+            agency_costs = benchmark.get('agency_supply_teaching_staff_costs')
+            
+            if supply_costs or agency_costs:
+                # Estimate recruitment spend as 25% of supply costs
+                recruitment_base = (supply_costs or 0) + (agency_costs or 0)
                 
-                patterns = {
-                    'teaching_staff_per_pupil': r'Teaching.*?staff.*?Spends\s+£([\d,]+)\s+per\s+pupil',
-                    'admin_supplies_per_pupil': r'Administrative\s+supplies.*?Spends\s+£([\d,]+)\s+per\s+pupil',
-                    'utilities_per_sqm': r'Utilities.*?Spends\s+£([\d,]+)\s+per\s+square\s+metre',
-                    'in_year_balance': r'In\s+year\s+balance[:\s]+[-−]?£([\d,]+)',
-                    'revenue_reserve': r'Revenue\s+reserve[:\s]+£([\d,]+)'
+                financial_data['recruitment_estimates'] = {
+                    'low': int(recruitment_base * 0.20),
+                    'high': int(recruitment_base * 0.30),
+                    'midpoint': int(recruitment_base * 0.25)
                 }
-                
-                for key, pattern in patterns.items():
-                    match = re.search(pattern, all_content, re.IGNORECASE | re.DOTALL)
-                    if match:
-                        value_str = match.group(1).replace(',', '')
-                        financial_data[key] = int(value_str)
-                        
-                        if key == 'in_year_balance' and ('−' in all_content[max(0, match.start()-10):match.start()] or '-' in all_content[max(0, match.start()-10):match.start()]):
-                            financial_data[key] = -financial_data[key]
         
         return financial_data
     
     def get_recruitment_intelligence(self, school_name: str, location: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Complete recruitment cost intelligence for a school
-        """
+        """Complete recruitment cost intelligence for a school"""
         
         urn_result = self.get_school_urn(school_name, location)
         
@@ -488,95 +354,39 @@ class FinancialDataEngine:
                 'confidence': urn_result['confidence']
             },
             'financial': financial_data,
-            'insights': self._generate_insights(financial_data, False),
-            'comparison': self._get_benchmarks(financial_data),
-            'conversation_starters': self._generate_cost_conversations(
-                financial_data, 
-                None,
-                None
-            )
+            'insights': self._generate_insights(financial_data),
+            'conversation_starters': self._generate_cost_conversations(financial_data)
         }
         
         return intelligence
     
-    def _calculate_name_match(self, search_name: str, result: Dict, is_trust: bool) -> float:
-        """Calculate confidence score for name match"""
-        result_name = self._extract_school_name(result).lower()
-        search_name = search_name.lower()
-        
-        base_confidence = 0.7 if is_trust else 0.5
-        
-        if search_name == result_name:
-            return 1.0
-        
-        if search_name in result_name or result_name in search_name:
-            return base_confidence + 0.2
-        
-        search_words = set(search_name.split())
-        result_words = set(result_name.split())
-        common_words = search_words.intersection(result_words)
-        
-        if common_words:
-            return base_confidence + (0.2 * len(common_words) / len(search_words))
-        
-        return base_confidence - 0.2
-    
-    def _generate_insights(self, financial_data: Dict, is_trust: bool) -> List[str]:
+    def _generate_insights(self, financial_data: Dict) -> List[str]:
         """Generate insights from financial data"""
         insights = []
         
         if 'benchmark_data' in financial_data and financial_data['benchmark_data']:
             benchmark = financial_data['benchmark_data']
             
-            if 'total_expenditure_per_pupil' in benchmark:
+            if benchmark.get('total_expenditure_per_pupil'):
                 insights.append(f"Total expenditure: £{benchmark['total_expenditure_per_pupil']:,} per pupil")
             
-            if 'supply_teaching_staff_costs' in benchmark:
-                insights.append(f"Supply teaching staff: £{benchmark['supply_teaching_staff_costs']:,} (opportunity for cost reduction)")
+            if benchmark.get('supply_teaching_staff_costs'):
+                insights.append(f"Supply teaching: £{benchmark['supply_teaching_staff_costs']:,}/year")
             
-            if 'agency_supply_teaching_staff_costs' in benchmark:
-                insights.append(f"Agency supply costs: £{benchmark['agency_supply_teaching_staff_costs']:,} (high-priority target)")
-        
-        if is_trust and 'recruitment_estimates' in financial_data:
-            est = financial_data['recruitment_estimates']
-            if 'total_trust' in est:
-                insights.append(f"Trust-wide annual recruitment spend: £{est['total_trust']:,}")
-                insights.append(f"Average per school: £{est['per_school_avg']:,} (saving {est['economies_of_scale_saving']} vs independent)")
-            
-            if 'supply_staff_costs' in financial_data and 'per_school_estimates' in financial_data:
-                supply_per = financial_data['per_school_estimates'].get('avg_supply', 0)
-                if supply_per:
-                    insights.append(f"Average supply costs per school: £{supply_per:,}")
-        
-        elif 'recruitment_estimates' in financial_data:
-            est = financial_data['recruitment_estimates']
-            if 'midpoint' in est:
-                midpoint = est['midpoint']
-                insights.append(f"Estimated annual recruitment spend: £{midpoint:,}")
-                
-                if 'note' in est:
-                    insights.append(f"Note: {est['note']}")
-            
-            if 'supply_staff_costs' in financial_data:
-                supply = financial_data['supply_staff_costs']
-                total_temp_costs = est.get('midpoint', 0) + supply
-                insights.append(f"Total temporary staffing costs: £{total_temp_costs:,}")
+            if benchmark.get('agency_supply_teaching_staff_costs'):
+                insights.append(f"Agency supply: £{benchmark['agency_supply_teaching_staff_costs']:,}/year - HIGH PRIORITY TARGET")
         
         if 'in_year_balance' in financial_data:
             balance = financial_data['in_year_balance']
             if balance < 0:
-                insights.append(f"School has a deficit of £{abs(balance):,} - may need cost-saving measures")
+                insights.append(f"Deficit: £{abs(balance):,} - needs cost savings")
             else:
-                insights.append(f"School has a surplus of £{balance:,}")
-        
-        if 'teaching_staff_per_pupil' in financial_data:
-            teaching = financial_data['teaching_staff_per_pupil']
-            insights.append(f"Teaching staff costs: £{teaching:,} per pupil")
+                insights.append(f"Surplus: £{balance:,}")
         
         return insights
     
-    def _generate_cost_conversations(self, financial_data: Dict, trust_name: str = None, schools_count: int = None) -> List[str]:
-        """Generate conversation starters about costs"""
+    def _generate_cost_conversations(self, financial_data: Dict) -> List[str]:
+        """Generate conversation starters"""
         starters = []
         
         if 'benchmark_data' in financial_data and financial_data['benchmark_data']:
@@ -584,71 +394,28 @@ class FinancialDataEngine:
             
             if benchmark.get('agency_supply_teaching_staff_costs', 0) > 0:
                 starters.append(
-                    f"I noticed you're spending £{benchmark['agency_supply_teaching_staff_costs']:,} on agency supply staff. "
-                    f"Protocol Education offers competitive rates and exclusive arrangements that could reduce this by 20-30%. "
-                    f"We guarantee quality and continuity that agencies often struggle to provide."
+                    f"I see you're spending £{benchmark['agency_supply_teaching_staff_costs']:,} on agency supply staff. "
+                    f"Protocol Education typically saves schools 20-30% on these costs with better quality guarantees."
                 )
             
-            if benchmark.get('supply_teaching_staff_costs', 0) > 0:
+            if benchmark.get('supply_teaching_staff_costs', 0) > 50000:
                 starters.append(
-                    f"Your supply teaching costs of £{benchmark['supply_teaching_staff_costs']:,} suggest regular staffing gaps. "
-                    f"Have you considered our long-term supply solutions? Many schools find they save 15-25% compared to daily booking."
-                )
-        
-        if trust_name and 'recruitment_estimates' in financial_data:
-            est = financial_data['recruitment_estimates']
-            if 'total_trust' in est:
-                starters.append(
-                    f"I see {trust_name} manages {schools_count or 'multiple'} schools with approximately "
-                    f"£{est['total_trust']:,} in annual recruitment costs. Protocol Education's trust-wide "
-                    "partnership could reduce this by 30-40% through economies of scale."
-                )
-                
-                if schools_count and est.get('per_school_avg'):
-                    starters.append(
-                        f"With an average recruitment spend of £{est['per_school_avg']:,} per school, "
-                        "a trust-wide agreement with Protocol could standardize quality while reducing costs."
-                    )
-        
-        elif 'recruitment_estimates' in financial_data:
-            est = financial_data['recruitment_estimates']
-            if 'midpoint' in est:
-                cost = est['midpoint']
-                starters.append(
-                    f"Your school spends approximately £{cost:,} annually on recruitment. "
-                    "Protocol Education could help reduce these costs through our competitive rates and quality guarantee."
-                )
-        
-        if 'supply_staff_costs' in financial_data:
-            supply = financial_data['supply_staff_costs']
-            if trust_name:
-                starters.append(
-                    f"With trust-wide supply costs totaling £{supply:,}, our dedicated trust team "
-                    "can ensure consistent quality cover across all your schools."
-                )
-            else:
-                starters.append(
-                    f"Your £{supply:,} annual supply costs could be reduced through our long-term "
-                    "staffing solutions and competitive daily rates."
-                )
-        
-        if 'in_year_balance' in financial_data:
-            balance = financial_data['in_year_balance']
-            if balance < 0:
-                starters.append(
-                    f"I noticed your school is managing a deficit of £{abs(balance):,}. "
-                    "Protocol Education can help reduce recruitment costs as part of your financial recovery plan."
-                )
-        
-        if 'teaching_staff_per_pupil' in financial_data:
-            teaching = financial_data['teaching_staff_per_pupil']
-            if teaching > 5000:
-                starters.append(
-                    f"With teaching costs at £{teaching:,} per pupil, ensuring value in recruitment "
-                    "is crucial. Protocol's quality guarantee ensures you get the best teachers at competitive rates."
+                    f"Your £{benchmark['supply_teaching_staff_costs']:,} supply costs suggest regular staffing gaps. "
+                    f"Our long-term supply solutions typically reduce costs by 15-25%."
                 )
         
         return starters
+    
+    def _calculate_name_match(self, search_name: str, result: Dict, is_trust: bool) -> float:
+        """Calculate confidence score for name match"""
+        result_name = self._extract_school_name(result).lower()
+        search_name = search_name.lower()
+        
+        if search_name == result_name:
+            return 1.0
+        if search_name in result_name or result_name in search_name:
+            return 0.9
+        return 0.7
     
     def _extract_school_name(self, search_result: Dict) -> str:
         """Extract official school name from search result"""
@@ -680,39 +447,14 @@ class FinancialDataEngine:
                     'urn': urn_match.group(1),
                     'official_name': self._extract_school_name(result),
                     'confidence': 0.7,
-                    'is_trust': False,
                     'alternatives': []
                 }
         
         return {'urn': None, 'confidence': 0.0, 'error': 'No results found'}
-    
-    def _get_benchmarks(self, financial_data: Dict) -> Dict:
-        """Get benchmark comparisons"""
-        benchmarks = {
-            'national_average': {
-                'indirect_employee_expenses': 35000,
-                'supply_costs': 100000,
-                'teaching_per_pupil': 5500
-            },
-            'comparison': {}
-        }
-        
-        if 'teaching_staff_per_pupil' in financial_data:
-            teaching = financial_data['teaching_staff_per_pupil']
-            avg = benchmarks['national_average']['teaching_per_pupil']
-            diff_pct = ((teaching - avg) / avg) * 100
-            benchmarks['comparison']['teaching_vs_average'] = f"{'+' if diff_pct > 0 else ''}{diff_pct:.1f}%"
-        
-        if 'benchmark_data' in financial_data and financial_data['benchmark_data']:
-            benchmarks['school_benchmark_data'] = financial_data['benchmark_data']
-        
-        return benchmarks
 
 
 def enhance_school_with_financial_data(intel, serper_engine):
-    """
-    Add financial data to existing school intelligence
-    """
+    """Add financial data to existing school intelligence"""
     
     try:
         financial_engine = FinancialDataEngine(serper_engine)
@@ -729,17 +471,14 @@ def enhance_school_with_financial_data(intel, serper_engine):
                         ConversationStarter(
                             topic="Recruitment Costs",
                             detail=starter,
-                            source_url=financial_intel.get('financial', {}).get('source_url', ''),
+                            source_url=financial_intel.get('financial', {}).get('comparison_url', ''),
                             relevance_score=0.9
                         )
                     )
             
             intel.financial_data = financial_intel
-            
-            logger.info(f"✅ Successfully enhanced {intel.school_name} with financial data")
-        else:
-            logger.warning(f"Could not get financial data for {intel.school_name}: {financial_intel.get('error')}")
-    
+            logger.info(f"✅ Enhanced {intel.school_name} with financial data")
+        
     except Exception as e:
         logger.error(f"Error enhancing school with financial data: {e}")
     
