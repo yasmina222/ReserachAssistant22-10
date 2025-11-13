@@ -6,6 +6,7 @@ import os
 from typing import Dict, Optional, Tuple, List, Any
 from datetime import datetime
 from models import ConversationStarter
+from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,16 @@ class FinancialDataEngine:
         self.firecrawl_api_key = "fc-d1b7c888232f480d8058d9f137460741"
         self.firecrawl_api_url = "https://api.firecrawl.dev/v2/scrape"
         
-        logger.info("✅ Financial engine initialised")
+        # Initialize OpenAI client
+        try:
+            import streamlit as st
+            openai_key = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
+        except:
+            openai_key = os.getenv("OPENAI_API_KEY")
+        
+        self.openai_client = OpenAI(api_key=openai_key)
+        
+        logger.info("✅ Financial engine initialized with Firecrawl")
         
     def get_school_urn(self, school_name: str, location: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -172,11 +182,11 @@ class FinancialDataEngine:
         if 'benchmark_data' in financial_data:
             benchmark = financial_data['benchmark_data']
             
-            supply_costs = benchmark.get('supply_teaching_staff_costs', 0)
-            agency_costs = benchmark.get('agency_supply_teaching_staff_costs', 0)
+            supply_costs = benchmark.get('supply_teaching_staff_costs', 0) or 0
+            agency_costs = benchmark.get('agency_supply_teaching_staff_costs', 0) or 0
             
             if supply_costs or agency_costs:
-                recruitment_base = (supply_costs or 0) + (agency_costs or 0)
+                recruitment_base = supply_costs + agency_costs
                 
                 financial_data['recruitment_estimates'] = {
                     'low': int(recruitment_base * 0.20),
@@ -242,154 +252,173 @@ class FinancialDataEngine:
     
     def _scrape_comparison_page(self, url: str) -> Dict[str, Any]:
         """
-        Scrape comparison page for the 6 critical benchmark costs
-        ENHANCED: Adds wait time and scrolling for JavaScript-loaded content
+        Use Firecrawl EXTRACT endpoint for complex government page
+        More reliable than scrape for JavaScript-heavy sites
         """
+        
+        logger.info(f"🔥 Using Firecrawl EXTRACT for comparison page...")
         
         headers = {
             "Authorization": f"Bearer {self.firecrawl_api_key}",
             "Content-Type": "application/json"
         }
         
-        # Define exact schema for the 6 fields we need
+        # Use EXTRACT endpoint (not scrape)
+        extract_url = "https://api.firecrawl.dev/v1/extract"
+        
         payload = {
-            "url": url,
-            "formats": [{
-                "type": "json",
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "total_teaching_and_support_costs_per_pupil": {
-                            "type": "number",
-                            "description": "Total teaching and teaching support staff costs per pupil in pounds"
-                        },
-                        "teaching_staff_costs": {
-                            "type": "number",
-                            "description": "Teaching staff costs (total annual) in pounds"
-                        },
-                        "supply_teaching_staff_costs": {
-                            "type": "number",
-                            "description": "Supply teaching staff costs (annual) in pounds"
-                        },
-                        "educational_consultancy_costs": {
-                            "type": "number",
-                            "description": "Educational consultancy costs (annual) in pounds"
-                        },
-                        "educational_support_staff_costs": {
-                            "type": "number",
-                            "description": "Educational support staff costs (annual) in pounds"
-                        },
-                        "agency_supply_teaching_staff_costs": {
-                            "type": "number",
-                            "description": "Agency supply teaching staff costs (annual) in pounds - THIS IS HIGH PRIORITY"
-                        }
+            "urls": [url],
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "total_teaching_and_support_costs_per_pupil": {
+                        "type": "number",
+                        "description": "Total teaching and teaching support staff costs per pupil in pounds (annual)"
+                    },
+                    "teaching_staff_costs": {
+                        "type": "number",
+                        "description": "Teaching staff costs total in pounds (annual)"
+                    },
+                    "supply_teaching_staff_costs": {
+                        "type": "number",
+                        "description": "Supply teaching staff costs in pounds (annual)"
+                    },
+                    "educational_consultancy_costs": {
+                        "type": "number",
+                        "description": "Educational consultancy costs in pounds (annual)"
+                    },
+                    "educational_support_staff_costs": {
+                        "type": "number",
+                        "description": "Educational support staff costs in pounds (annual)"
+                    },
+                    "agency_supply_teaching_staff_costs": {
+                        "type": "number",
+                        "description": "Agency supply teaching staff costs in pounds (annual) - recruitment agency target"
                     }
-                }
-            }],
-            "actions": [
-                {"type": "wait", "milliseconds": 5000},  # Wait 5 seconds for JavaScript
-                {"type": "scroll", "direction": "down"},  # Scroll to load content
-                {"type": "wait", "milliseconds": 2000}   # Wait another 2 seconds
-            ],
-            "timeout": 45000  # 45 second timeout
+                },
+                "required": []
+            },
+            "prompt": "Extract the teaching and support staff costs from this UK school financial benchmarking comparison page. Focus on the 'Teaching and teaching support staff' section."
         }
         
-        logger.info(f"🔥 Scraping comparison page with 7-second wait for JS...")
-        
         try:
-            response = requests.post(self.firecrawl_api_url, json=payload, headers=headers, timeout=60)
+            # Extract endpoint may take longer
+            response = requests.post(extract_url, json=payload, headers=headers, timeout=90)
             
             if response.status_code == 200:
                 data = response.json()
                 
-                if data.get('success') and data.get('data', {}).get('json'):
-                    extracted = data['data']['json']
+                if data.get('success'):
+                    # Extract endpoint returns data differently
+                    extracted_data = data.get('data', {})
                     
-                    # Clean the data
+                    # Clean and validate
                     benchmark_data = {}
-                    for key, value in extracted.items():
-                        if value is not None and value != 0:
+                    for key in ['total_teaching_and_support_costs_per_pupil', 'teaching_staff_costs', 
+                               'supply_teaching_staff_costs', 'educational_consultancy_costs',
+                               'educational_support_staff_costs', 'agency_supply_teaching_staff_costs']:
+                        
+                        value = extracted_data.get(key)
+                        if value and value != 0:
                             try:
-                                benchmark_data[key] = int(value) if isinstance(value, (int, float)) else int(value)
+                                benchmark_data[key] = int(value)
+                                logger.info(f"  ✓ {key}: £{int(value):,}")
                             except:
                                 pass
                     
                     if benchmark_data:
-                        logger.info(f"✅ Extracted {len(benchmark_data)} fields from comparison page")
+                        logger.info(f"✅ Extract got {len(benchmark_data)} fields")
                         return benchmark_data
                     else:
-                        logger.error(f"❌ Firecrawl returned empty data for comparison page")
+                        logger.warning("⚠️ Extract returned no valid data")
                 else:
-                    logger.error(f"❌ No JSON data in Firecrawl response")
-                    logger.error(f"Response: {data}")
+                    logger.error(f"❌ Extract failed: {data.get('error', 'Unknown error')}")
             else:
-                logger.error(f"❌ Firecrawl returned {response.status_code}: {response.text[:500]}")
+                logger.error(f"❌ Extract HTTP {response.status_code}: {response.text[:300]}")
                 
+        except requests.exceptions.Timeout:
+            logger.error("❌ Extract timed out (90s)")
         except Exception as e:
-            logger.error(f"❌ Error scraping comparison page: {e}")
+            logger.error(f"❌ Extract error: {e}")
         
-        # FALLBACK: Try with markdown format and manual extraction
-        logger.warning("⚠️ Trying fallback: markdown scrape...")
-        return self._scrape_comparison_fallback(url)
+        # FINAL FALLBACK: Try scraping with markdown and send to GPT-4o-mini
+        logger.warning("⚠️ Trying GPT-4o-mini fallback...")
+        return self._gpt_extraction_fallback(url)
     
-    def _scrape_comparison_fallback(self, url: str) -> Dict[str, Any]:
+    def _gpt_extraction_fallback(self, url: str) -> Dict[str, Any]:
         """
-        Fallback method: Get markdown and extract with regex
+        Last resort: Scrape markdown and use GPT-4o-mini
         """
-        
-        headers = {
-            "Authorization": f"Bearer {self.firecrawl_api_key}",
-            "Content-Type": "application/json"
-        }
-        
-        payload = {
-            "url": url,
-            "formats": ["markdown"],
-            "actions": [
-                {"type": "wait", "milliseconds": 5000},
-                {"type": "scroll", "direction": "down"},
-                {"type": "wait", "milliseconds": 2000}
-            ],
-            "timeout": 45000
-        }
-        
         try:
-            response = requests.post(self.firecrawl_api_url, json=payload, headers=headers, timeout=60)
+            # Simple scrape for markdown
+            headers = {
+                "Authorization": f"Bearer {self.firecrawl_api_key}",
+                "Content-Type": "application/json"
+            }
+            
+            payload = {
+                "url": url,
+                "formats": ["markdown"],
+                "timeout": 30000
+            }
+            
+            response = requests.post(self.firecrawl_api_url, json=payload, headers=headers, timeout=45)
             
             if response.status_code == 200:
                 data = response.json()
+                markdown = data.get('data', {}).get('markdown', '')
                 
-                if data.get('success') and data.get('data', {}).get('markdown'):
-                    markdown = data['data']['markdown']
+                if markdown and len(markdown) > 500:
+                    logger.info(f"📄 Got markdown ({len(markdown)} chars), sending to GPT...")
                     
-                    logger.info(f"📄 Got markdown content ({len(markdown)} chars), extracting costs...")
+                    # Use GPT-4o-mini to extract
+                    gpt_response = self.openai_client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {
+                                "role": "system",
+                                "content": "Extract financial costs from UK school data. Return ONLY valid JSON with numeric values (no £ symbols, no commas). Use null for missing data."
+                            },
+                            {
+                                "role": "user",
+                                "content": f"""Extract these 6 costs from this school financial data:
+
+1. total_teaching_and_support_costs_per_pupil
+2. teaching_staff_costs
+3. supply_teaching_staff_costs
+4. educational_consultancy_costs
+5. educational_support_staff_costs
+6. agency_supply_teaching_staff_costs
+
+Data:
+{markdown[:15000]}
+
+Return ONLY JSON like: {{"teaching_staff_costs": 950000, ...}}"""
+                            }
+                        ],
+                        temperature=0.1,
+                        max_tokens=500,
+                        response_format={"type": "json_object"}
+                    )
                     
-                    # Extract with regex patterns
+                    result = json.loads(gpt_response.choices[0].message.content)
+                    
+                    # Clean data
                     benchmark_data = {}
-                    
-                    patterns = {
-                        'teaching_staff_costs': r'Teaching staff.*?[£$]?\s*([0-9,]+)',
-                        'supply_teaching_staff_costs': r'Supply teaching staff.*?[£$]?\s*([0-9,]+)',
-                        'agency_supply_teaching_staff_costs': r'Agency supply.*?[£$]?\s*([0-9,]+)',
-                        'educational_consultancy_costs': r'Educational consultancy.*?[£$]?\s*([0-9,]+)',
-                        'educational_support_staff_costs': r'Educational support staff.*?[£$]?\s*([0-9,]+)',
-                        'total_teaching_and_support_costs_per_pupil': r'Total teaching and.*?support staff.*?[£$]?\s*([0-9,]+)'
-                    }
-                    
-                    for key, pattern in patterns.items():
-                        match = re.search(pattern, markdown, re.IGNORECASE | re.DOTALL)
-                        if match:
+                    for key, value in result.items():
+                        if value and value != "null" and value != 0:
                             try:
-                                value = int(match.group(1).replace(',', ''))
-                                benchmark_data[key] = value
-                                logger.info(f"  ✓ {key}: £{value:,}")
+                                benchmark_data[key] = int(value)
+                                logger.info(f"  ✓ GPT found {key}: £{int(value):,}")
                             except:
                                 pass
                     
-                    return benchmark_data
-                    
+                    if benchmark_data:
+                        logger.info(f"✅ GPT extracted {len(benchmark_data)} fields")
+                        return benchmark_data
+            
         except Exception as e:
-            logger.error(f"❌ Fallback extraction failed: {e}")
+            logger.error(f"❌ GPT fallback failed: {e}")
         
         return {}
     
