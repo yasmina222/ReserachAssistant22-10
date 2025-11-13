@@ -240,158 +240,197 @@ class FinancialDataEngine:
         
         return {}
     
-   def _scrape_comparison_page(self, url: str) -> Dict[str, Any]:
-    """
-    Scrape comparison page for the 6 critical benchmark costs
-    ENHANCED: Adds wait time and scrolling for JavaScript-loaded content
-    """
-    
-    headers = {
-        "Authorization": f"Bearer {self.firecrawl_api_key}",
-        "Content-Type": "application/json"
-    }
-    
-    # Define exact schema for the 6 fields we need
-    payload = {
-        "url": url,
-        "formats": [{
-            "type": "json",
-            "schema": {
-                "type": "object",
-                "properties": {
-                    "total_teaching_and_support_costs_per_pupil": {
-                        "type": "number",
-                        "description": "Total teaching and teaching support staff costs per pupil in pounds"
-                    },
-                    "teaching_staff_costs": {
-                        "type": "number",
-                        "description": "Teaching staff costs (total annual) in pounds"
-                    },
-                    "supply_teaching_staff_costs": {
-                        "type": "number",
-                        "description": "Supply teaching staff costs (annual) in pounds"
-                    },
-                    "educational_consultancy_costs": {
-                        "type": "number",
-                        "description": "Educational consultancy costs (annual) in pounds"
-                    },
-                    "educational_support_staff_costs": {
-                        "type": "number",
-                        "description": "Educational support staff costs (annual) in pounds"
-                    },
-                    "agency_supply_teaching_staff_costs": {
-                        "type": "number",
-                        "description": "Agency supply teaching staff costs (annual) in pounds - THIS IS HIGH PRIORITY"
+    def _scrape_comparison_page(self, url: str) -> Dict[str, Any]:
+        """
+        Scrape comparison page for the 6 critical benchmark costs
+        ENHANCED: Adds wait time and scrolling for JavaScript-loaded content
+        """
+        
+        headers = {
+            "Authorization": f"Bearer {self.firecrawl_api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        # Define exact schema for the 6 fields we need
+        payload = {
+            "url": url,
+            "formats": [{
+                "type": "json",
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "total_teaching_and_support_costs_per_pupil": {
+                            "type": "number",
+                            "description": "Total teaching and teaching support staff costs per pupil in pounds"
+                        },
+                        "teaching_staff_costs": {
+                            "type": "number",
+                            "description": "Teaching staff costs (total annual) in pounds"
+                        },
+                        "supply_teaching_staff_costs": {
+                            "type": "number",
+                            "description": "Supply teaching staff costs (annual) in pounds"
+                        },
+                        "educational_consultancy_costs": {
+                            "type": "number",
+                            "description": "Educational consultancy costs (annual) in pounds"
+                        },
+                        "educational_support_staff_costs": {
+                            "type": "number",
+                            "description": "Educational support staff costs (annual) in pounds"
+                        },
+                        "agency_supply_teaching_staff_costs": {
+                            "type": "number",
+                            "description": "Agency supply teaching staff costs (annual) in pounds - THIS IS HIGH PRIORITY"
+                        }
                     }
                 }
-            }
-        }],
-        "actions": [
-            {"type": "wait", "milliseconds": 5000},  # Wait 5 seconds for JavaScript
-            {"type": "scroll", "direction": "down"},  # Scroll to load content
-            {"type": "wait", "milliseconds": 2000}   # Wait another 2 seconds
-        ],
-        "timeout": 45000  # 45 second timeout
-    }
-    
-    logger.info(f"🔥 Scraping comparison page with 7-second wait for JS...")
-    
-    try:
-        response = requests.post(self.firecrawl_api_url, json=payload, headers=headers, timeout=60)
+            }],
+            "actions": [
+                {"type": "wait", "milliseconds": 5000},  # Wait 5 seconds for JavaScript
+                {"type": "scroll", "direction": "down"},  # Scroll to load content
+                {"type": "wait", "milliseconds": 2000}   # Wait another 2 seconds
+            ],
+            "timeout": 45000  # 45 second timeout
+        }
         
-        if response.status_code == 200:
-            data = response.json()
+        logger.info(f"🔥 Scraping comparison page with 7-second wait for JS...")
+        
+        try:
+            response = requests.post(self.firecrawl_api_url, json=payload, headers=headers, timeout=60)
             
-            if data.get('success') and data.get('data', {}).get('json'):
-                extracted = data['data']['json']
+            if response.status_code == 200:
+                data = response.json()
                 
-                # Clean the data
-                benchmark_data = {}
-                for key, value in extracted.items():
-                    if value is not None and value != 0:
-                        try:
-                            benchmark_data[key] = int(value) if isinstance(value, (int, float)) else int(value)
-                        except:
-                            pass
-                
-                if benchmark_data:
-                    logger.info(f"✅ Extracted {len(benchmark_data)} fields from comparison page")
-                    return benchmark_data
+                if data.get('success') and data.get('data', {}).get('json'):
+                    extracted = data['data']['json']
+                    
+                    # Clean the data
+                    benchmark_data = {}
+                    for key, value in extracted.items():
+                        if value is not None and value != 0:
+                            try:
+                                benchmark_data[key] = int(value) if isinstance(value, (int, float)) else int(value)
+                            except:
+                                pass
+                    
+                    if benchmark_data:
+                        logger.info(f"✅ Extracted {len(benchmark_data)} fields from comparison page")
+                        return benchmark_data
+                    else:
+                        logger.error(f"❌ Firecrawl returned empty data for comparison page")
                 else:
-                    logger.error(f"❌ Firecrawl returned empty data for comparison page")
+                    logger.error(f"❌ No JSON data in Firecrawl response")
+                    logger.error(f"Response: {data}")
             else:
-                logger.error(f"❌ No JSON data in Firecrawl response")
-                logger.error(f"Response: {data}")
-        else:
-            logger.error(f"❌ Firecrawl returned {response.status_code}: {response.text[:500]}")
-            
-    except Exception as e:
-        logger.error(f"❌ Error scraping comparison page: {e}")
-    
-    # FALLBACK: Try with markdown format and manual extraction
-    logger.warning("⚠️ Trying fallback: markdown scrape...")
-    return self._scrape_comparison_fallback(url)
-
-def _scrape_comparison_fallback(self, url: str) -> Dict[str, Any]:
-    """
-    Fallback method: Get markdown and extract with regex
-    """
-    
-    headers = {
-        "Authorization": f"Bearer {self.firecrawl_api_key}",
-        "Content-Type": "application/json"
-    }
-    
-    payload = {
-        "url": url,
-        "formats": ["markdown"],
-        "actions": [
-            {"type": "wait", "milliseconds": 5000},
-            {"type": "scroll", "direction": "down"},
-            {"type": "wait", "milliseconds": 2000}
-        ],
-        "timeout": 45000
-    }
-    
-    try:
-        response = requests.post(self.firecrawl_api_url, json=payload, headers=headers, timeout=60)
+                logger.error(f"❌ Firecrawl returned {response.status_code}: {response.text[:500]}")
+                
+        except Exception as e:
+            logger.error(f"❌ Error scraping comparison page: {e}")
         
-        if response.status_code == 200:
-            data = response.json()
-            
-            if data.get('success') and data.get('data', {}).get('markdown'):
-                markdown = data['data']['markdown']
-                
-                logger.info(f"📄 Got markdown content ({len(markdown)} chars), extracting costs...")
-                
-                # Extract with regex patterns
-                benchmark_data = {}
-                
-                patterns = {
-                    'teaching_staff_costs': r'Teaching staff.*?[£$]?\s*([0-9,]+)',
-                    'supply_teaching_staff_costs': r'Supply teaching staff.*?[£$]?\s*([0-9,]+)',
-                    'agency_supply_teaching_staff_costs': r'Agency supply.*?[£$]?\s*([0-9,]+)',
-                    'educational_consultancy_costs': r'Educational consultancy.*?[£$]?\s*([0-9,]+)',
-                    'educational_support_staff_costs': r'Educational support staff.*?[£$]?\s*([0-9,]+)',
-                    'total_teaching_and_support_costs_per_pupil': r'Total teaching and.*?support staff.*?[£$]?\s*([0-9,]+)'
-                }
-                
-                for key, pattern in patterns.items():
-                    match = re.search(pattern, markdown, re.IGNORECASE | re.DOTALL)
-                    if match:
-                        try:
-                            value = int(match.group(1).replace(',', ''))
-                            benchmark_data[key] = value
-                            logger.info(f"  ✓ {key}: £{value:,}")
-                        except:
-                            pass
-                
-                return benchmark_data
-                
-    except Exception as e:
-        logger.error(f"❌ Fallback extraction failed: {e}")
+        # FALLBACK: Try with markdown format and manual extraction
+        logger.warning("⚠️ Trying fallback: markdown scrape...")
+        return self._scrape_comparison_fallback(url)
     
-    return {}
+    def _scrape_comparison_fallback(self, url: str) -> Dict[str, Any]:
+        """
+        Fallback method: Get markdown and extract with regex
+        """
+        
+        headers = {
+            "Authorization": f"Bearer {self.firecrawl_api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "url": url,
+            "formats": ["markdown"],
+            "actions": [
+                {"type": "wait", "milliseconds": 5000},
+                {"type": "scroll", "direction": "down"},
+                {"type": "wait", "milliseconds": 2000}
+            ],
+            "timeout": 45000
+        }
+        
+        try:
+            response = requests.post(self.firecrawl_api_url, json=payload, headers=headers, timeout=60)
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                if data.get('success') and data.get('data', {}).get('markdown'):
+                    markdown = data['data']['markdown']
+                    
+                    logger.info(f"📄 Got markdown content ({len(markdown)} chars), extracting costs...")
+                    
+                    # Extract with regex patterns
+                    benchmark_data = {}
+                    
+                    patterns = {
+                        'teaching_staff_costs': r'Teaching staff.*?[£$]?\s*([0-9,]+)',
+                        'supply_teaching_staff_costs': r'Supply teaching staff.*?[£$]?\s*([0-9,]+)',
+                        'agency_supply_teaching_staff_costs': r'Agency supply.*?[£$]?\s*([0-9,]+)',
+                        'educational_consultancy_costs': r'Educational consultancy.*?[£$]?\s*([0-9,]+)',
+                        'educational_support_staff_costs': r'Educational support staff.*?[£$]?\s*([0-9,]+)',
+                        'total_teaching_and_support_costs_per_pupil': r'Total teaching and.*?support staff.*?[£$]?\s*([0-9,]+)'
+                    }
+                    
+                    for key, pattern in patterns.items():
+                        match = re.search(pattern, markdown, re.IGNORECASE | re.DOTALL)
+                        if match:
+                            try:
+                                value = int(match.group(1).replace(',', ''))
+                                benchmark_data[key] = value
+                                logger.info(f"  ✓ {key}: £{value:,}")
+                            except:
+                                pass
+                    
+                    return benchmark_data
+                    
+        except Exception as e:
+            logger.error(f"❌ Fallback extraction failed: {e}")
+        
+        return {}
+    
+    def get_recruitment_intelligence(self, school_name: str, location: Optional[str] = None) -> Dict[str, Any]:
+        """Complete recruitment cost intelligence for a school"""
+        
+        # Step 1: Get URN with NEW Firecrawl method
+        urn_result = self.get_school_urn(school_name, location)
+        
+        if not urn_result.get('urn'):
+            return {
+                'error': 'Could not find school URN',
+                'suggestions': urn_result.get('alternatives', [])
+            }
+        
+        logger.info(f"✅ Found URN {urn_result['urn']} for {urn_result['official_name']}")
+        
+        # Step 2: Get financial data with NEW Firecrawl method
+        financial_data = self.get_financial_data(
+            urn_result['urn'],
+            urn_result['official_name'],
+            False
+        )
+        
+        # Step 3: Generate intelligence
+        intelligence = {
+            'school_searched': school_name,
+            'entity_found': {
+                'name': urn_result['official_name'],
+                'type': 'School',
+                'urn': urn_result['urn'],
+                'location': urn_result.get('address', ''),
+                'trust_name': urn_result.get('trust_name'),
+                'confidence': urn_result['confidence']
+            },
+            'financial': financial_data,
+            'insights': self._generate_insights(financial_data),
+            'conversation_starters': self._generate_cost_conversations(financial_data)
+        }
+        
+        return intelligence
     
     def _generate_insights(self, financial_data: Dict) -> List[str]:
         """Generate insights from financial data"""
