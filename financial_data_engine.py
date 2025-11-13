@@ -215,7 +215,7 @@ class FinancialDataEngine:
         
         try:
             # The exact approach that worked in Firecrawl playground
-            data = self.firecrawl_app.extract(
+            result = self.firecrawl_app.extract(
                 urls=[url],
                 prompt=(
                     "Extract financial data from the 'Teaching and teaching support staff' section. "
@@ -230,9 +230,13 @@ class FinancialDataEngine:
                 schema=FinancialDataSchema.model_json_schema()
             )
             
-            # Parse the response
-            if data and 'data' in data and len(data['data']) > 0:
-                extracted = data['data'][0]
+            logger.info(f"📥 Firecrawl response: {result}")
+            
+            # CRITICAL FIX: Data is at root level, not nested!
+            if result and hasattr(result, 'data') and result.data:
+                extracted = result.data
+                
+                logger.info(f"✅ Extracted data: {extracted}")
                 
                 # Convert to clean dict with safe null checking
                 benchmark_data = {}
@@ -241,12 +245,13 @@ class FinancialDataEngine:
                            'supply_teaching_staff_costs', 'educational_consultancy_costs',
                            'educational_support_staff_costs', 'agency_supply_teaching_staff_costs']:
                     
-                    value = extracted.get(key)
+                    value = extracted.get(key) if isinstance(extracted, dict) else getattr(extracted, key, None)
                     
-                    # Safe null checking and conversion
-                    if value is not None and value != 0:  # Keep zeros as valid data
+                    # Safe null checking - treat 0 as valid data!
+                    if value is not None:
                         try:
                             numeric_value = float(value)
+                            # Store ALL values including zeros (zero = no costs, which is valid!)
                             benchmark_data[key] = int(numeric_value) if numeric_value.is_integer() else numeric_value
                             logger.info(f"  ✅ {key}: £{numeric_value:,.0f}")
                         except (ValueError, TypeError) as e:
@@ -256,12 +261,12 @@ class FinancialDataEngine:
                     logger.info(f"✅ Firecrawl SDK extracted {len(benchmark_data)}/6 fields")
                     return benchmark_data
                 else:
-                    logger.error("❌ No valid data in Firecrawl response")
+                    logger.error("❌ No valid data after parsing")
             else:
-                logger.error(f"❌ Firecrawl SDK returned empty data: {data}")
+                logger.error(f"❌ Firecrawl SDK returned unexpected format: {result}")
                 
         except Exception as e:
-            logger.error(f"❌ Firecrawl SDK error: {e}")
+            logger.error(f"❌ Firecrawl SDK error: {e}", exc_info=True)
         
         logger.error("🚨 Firecrawl SDK extraction failed")
         return {}
@@ -440,3 +445,4 @@ def enhance_school_with_financial_data(intel, serper_engine):
         logger.error(f"❌ Error enhancing with financial data: {e}", exc_info=True)
     
     return intel
+
