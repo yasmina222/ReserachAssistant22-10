@@ -462,107 +462,110 @@ Return ONLY JSON like: {{"teaching_staff_costs": 950000, ...}}"""
         return intelligence
     
     def _generate_insights(self, financial_data: Dict) -> List[str]:
-        """Generate insights from financial data"""
-        insights = []
+    """Generate insights from financial data"""
+    insights = []
+    
+    if 'benchmark_data' in financial_data and financial_data['benchmark_data']:
+        benchmark = financial_data['benchmark_data']
         
-        if 'benchmark_data' in financial_data and financial_data['benchmark_data']:
-            benchmark = financial_data['benchmark_data']
-            
-            # Total expenditure
-            total_teaching = benchmark.get('total_teaching_and_support_costs_per_pupil', 0) or 0
-            if total_teaching > 0:
-                insights.append(f"Teaching & support costs: £{total_teaching:,} per pupil")
-            
-            # Supply costs
-            supply = benchmark.get('supply_teaching_staff_costs', 0) or 0
-            if supply > 0:
-                insights.append(f"Supply teaching: £{supply:,}/year (opportunity for cost reduction)")
-            
-            # Agency costs (HIGH PRIORITY)
-            agency = benchmark.get('agency_supply_teaching_staff_costs', 0) or 0
-            if agency > 0:
-                insights.append(f"🎯 Agency supply: £{agency:,}/year - HIGH PRIORITY COMPETITIVE TARGET")
-            
-            # Consultancy
-            consultancy = benchmark.get('educational_consultancy_costs', 0) or 0
-            if consultancy > 15000:
-                insights.append(f"High consultancy spend: £{consultancy:,}/year (suggests leadership transitions/Ofsted pressure)")
+        # Total expenditure - SAFE comparison
+        total_teaching = benchmark.get('total_teaching_and_support_costs_per_pupil')
+        if total_teaching and total_teaching > 0:
+            insights.append(f"Teaching & support costs: £{total_teaching:,} per pupil")
         
-        # Financial pressure
-        balance = financial_data.get('in_year_balance', 0) or 0
+        # Supply costs - SAFE comparison
+        supply = benchmark.get('supply_teaching_staff_costs')
+        if supply and supply > 0:
+            insights.append(f"Supply teaching: £{supply:,}/year (opportunity for cost reduction)")
+        
+        # Agency costs - SAFE comparison
+        agency = benchmark.get('agency_supply_teaching_staff_costs')
+        if agency and agency > 0:
+            insights.append(f"🎯 Agency supply: £{agency:,}/year - HIGH PRIORITY COMPETITIVE TARGET")
+        
+        # Consultancy - SAFE comparison
+        consultancy = benchmark.get('educational_consultancy_costs')
+        if consultancy and consultancy > 15000:
+            insights.append(f"High consultancy spend: £{consultancy:,}/year (suggests leadership transitions/Ofsted pressure)")
+    
+    # Financial pressure - SAFE comparison
+    balance = financial_data.get('in_year_balance')
+    if balance is not None:
         if balance < 0:
             insights.append(f"⚠️ Operating deficit: £{abs(balance):,} - urgent cost savings needed")
         elif balance > 0:
             insights.append(f"✅ Surplus: £{balance:,}")
-        
-        return insights
+    
+    return insights
     
     def _generate_cost_conversations(self, financial_data: Dict) -> List[str]:
-        """Generate specific conversation starters based on financial data"""
-        starters = []
+    """Generate specific conversation starters based on financial data"""
+    starters = []
+    
+    if 'benchmark_data' in financial_data and financial_data['benchmark_data']:
+        benchmark = financial_data['benchmark_data']
         
-        if 'benchmark_data' in financial_data and financial_data['benchmark_data']:
-            benchmark = financial_data['benchmark_data']
-            
-            # AGENCY COSTS - Highest priority
-            agency = benchmark.get('agency_supply_teaching_staff_costs', 0) or 0
-            if agency > 0:
-                savings = int(agency * 0.25)
-                starters.append(
-                    f"I noticed from the government's financial benchmarking data that you're spending "
-                    f"£{agency:,} annually on agency supply staff. Many schools in similar situations have "
-                    f"switched to Protocol Education and saved 20-30% (approximately £{savings:,} in your case) "
-                    f"while actually improving teacher quality and consistency. Would you be open to a brief "
-                    f"conversation about how we've helped other schools reduce these costs?"
-                )
-            
-            # SUPPLY COSTS
-            supply = benchmark.get('supply_teaching_staff_costs', 0) or 0
-            if supply > 50000 and agency == 0:
-                starters.append(
-                    f"Your supply teaching costs of £{supply:,} annually suggest regular staffing challenges. "
-                    f"Interestingly, you're not currently using agency arrangements, which often provide better "
-                    f"value than daily booking. We've seen schools in your position reduce costs by 15-25% "
-                    f"through our long-term supply solutions. Would it be helpful to explore this?"
-                )
-            elif supply > 80000:
-                starters.append(
-                    f"With £{supply:,} in annual supply costs, you're clearly managing significant staffing "
-                    f"gaps. Protocol Education specializes in providing consistent, high-quality supply staff "
-                    f"at competitive rates. Many schools find our approach reduces both costs and the "
-                    f"administrative burden of managing multiple supply arrangements."
-                )
-            
-            # CONSULTANCY
-            consultancy = benchmark.get('educational_consultancy_costs', 0) or 0
-            if consultancy > 15000:
-                starters.append(
-                    f"I see you're investing £{consultancy:,} in educational consultancy. This often indicates "
-                    f"leadership transitions or Ofsted preparation. We've helped many schools in similar "
-                    f"situations by providing stable, high-quality staffing during periods of change, which "
-                    f"allows leadership to focus on strategic improvements rather than daily staffing challenges."
-                )
-        
-        # DEFICIT
-        balance = financial_data.get('in_year_balance', 0) or 0
-        if balance < -30000:
+        # AGENCY COSTS - SAFE comparison
+        agency = benchmark.get('agency_supply_teaching_staff_costs')
+        if agency and agency > 0:
+            savings = int(agency * 0.25)
             starters.append(
-                f"I understand your school is managing a deficit of £{abs(balance):,}. Protocol Education "
-                f"has specific programs designed to help schools reduce recruitment and supply costs as part "
-                f"of financial recovery plans. We've worked with several schools in similar positions and "
-                f"typically achieve 20-30% cost reductions within the first year, which can make a real "
-                f"difference to your budget position."
+                f"I noticed from the government's financial benchmarking data that you're spending "
+                f"£{agency:,} annually on agency supply staff. Many schools in similar situations have "
+                f"switched to Protocol Education and saved 20-30% (approximately £{savings:,} in your case) "
+                f"while actually improving teacher quality and consistency. Would you be open to a brief "
+                f"conversation about how we've helped other schools reduce these costs?"
             )
         
-        # Fallback
-        if not starters:
+        # SUPPLY COSTS - SAFE comparison
+        supply = benchmark.get('supply_teaching_staff_costs')
+        agency_val = benchmark.get('agency_supply_teaching_staff_costs') or 0
+        
+        if supply and supply > 50000 and agency_val == 0:
             starters.append(
-                "Protocol Education provides high-quality teaching staff at competitive rates with a "
-                "quality guarantee. We'd be happy to provide a no-obligation comparison against your "
-                "current arrangements to show potential cost savings and service improvements."
+                f"Your supply teaching costs of £{supply:,} annually suggest regular staffing challenges. "
+                f"Interestingly, you're not currently using agency arrangements, which often provide better "
+                f"value than daily booking. We've seen schools in your position reduce costs by 15-25% "
+                f"through our long-term supply solutions. Would it be helpful to explore this?"
+            )
+        elif supply and supply > 80000:
+            starters.append(
+                f"With £{supply:,} in annual supply costs, you're clearly managing significant staffing "
+                f"gaps. Protocol Education specializes in providing consistent, high-quality supply staff "
+                f"at competitive rates. Many schools find our approach reduces both costs and the "
+                f"administrative burden of managing multiple supply arrangements."
             )
         
-        return starters
+        # CONSULTANCY - SAFE comparison
+        consultancy = benchmark.get('educational_consultancy_costs')
+        if consultancy and consultancy > 15000:
+            starters.append(
+                f"I see you're investing £{consultancy:,} in educational consultancy. This often indicates "
+                f"leadership transitions or Ofsted preparation. We've helped many schools in similar "
+                f"situations by providing stable, high-quality staffing during periods of change, which "
+                f"allows leadership to focus on strategic improvements rather than daily staffing challenges."
+            )
+    
+    # DEFICIT - SAFE comparison
+    balance = financial_data.get('in_year_balance')
+    if balance is not None and balance < -30000:
+        starters.append(
+            f"I understand your school is managing a deficit of £{abs(balance):,}. Protocol Education "
+            f"has specific programs designed to help schools reduce recruitment and supply costs as part "
+            f"of financial recovery plans. We've worked with several schools in similar positions and "
+            f"typically achieve 20-30% cost reductions within the first year, which can make a real "
+            f"difference to your budget position."
+        )
+    
+    # Fallback
+    if not starters:
+        starters.append(
+            "Protocol Education provides high-quality teaching staff at competitive rates with a "
+            "quality guarantee. We'd be happy to provide a no-obligation comparison against your "
+            "current arrangements to show potential cost savings and service improvements."
+        )
+    
+    return starters
     
     def _calculate_name_match(self, search_name: str, result: Dict, is_trust: bool) -> float:
         """Calculate confidence score for name match"""
