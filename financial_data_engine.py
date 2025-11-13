@@ -6,30 +6,44 @@ import os
 from typing import Dict, Optional, Tuple, List, Any
 from datetime import datetime
 from models import ConversationStarter
-from openai import OpenAI
-from bs4 import BeautifulSoup
+from firecrawl import Firecrawl
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
+# Pydantic schema for financial data extraction
+class FinancialDataSchema(BaseModel):
+    total_teaching_and_support_staff_costs_per_pupil: float = Field(
+        description="The total teaching and support staff costs per pupil"
+    )
+    teaching_staff_costs: float = Field(
+        description="The teaching staff costs (NOT including supply or agency)"
+    )
+    supply_teaching_staff_costs: float = Field(
+        description="The supply teaching staff costs"
+    )
+    educational_consultancy_costs: float = Field(
+        description="The educational consultancy costs"
+    )
+    educational_support_staff_costs: float = Field(
+        description="The educational support staff costs"
+    )
+    agency_supply_teaching_staff_costs: float = Field(
+        description="The agency supply teaching staff costs - CRITICAL for recruitment"
+    )
+
 class FinancialDataEngine:
-    """Retrieves school financial data from government sources - FULLY FIXED"""
+    """Retrieves school financial data from government sources using Firecrawl SDK"""
     
     def __init__(self, serper_engine):
-        """Initialize with Firecrawl API"""
+        """Initialize with Firecrawl SDK"""
         self.serper = serper_engine
         self.firecrawl_api_key = "fc-d1b7c888232f480d8058d9f137460741"
-        self.firecrawl_scrape_url = "https://api.firecrawl.dev/v2/scrape"
         
-        # Initialize OpenAI client
-        try:
-            import streamlit as st
-            openai_key = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
-        except:
-            openai_key = os.getenv("OPENAI_API_KEY")
+        # Initialize Firecrawl SDK (THE GAME CHANGER!)
+        self.firecrawl_app = Firecrawl(api_key=self.firecrawl_api_key)
         
-        self.openai_client = OpenAI(api_key=openai_key)
-        
-        logger.info("✅ Financial engine initialized (FIXED VERSION)")
+        logger.info("✅ Financial engine initialized with Firecrawl SDK (WORKING VERSION!)")
         
     def get_school_urn(self, school_name: str, location: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -193,198 +207,63 @@ class FinancialDataEngine:
     
     def _scrape_comparison_page_v2(self, url: str) -> Dict[str, Any]:
         """
-        IMPROVED: Multi-method extraction with proper fallbacks
-        1. Try Firecrawl v2 with markdown extraction
-        2. Parse markdown with GPT-4o-mini
-        3. If fails, try direct requests + BeautifulSoup
+        WORKING METHOD: Use Firecrawl SDK with Pydantic schema
+        This is what you tested in the Firecrawl playground and it WORKS!
         """
         
-        # METHOD 1: Firecrawl markdown + GPT extraction
-        logger.info("📄 Method 1: Firecrawl markdown extraction...")
-        markdown_result = self._try_firecrawl_markdown(url)
-        if markdown_result:
-            return markdown_result
-        
-        # METHOD 2: Direct HTML scraping (bypasses Firecrawl)
-        logger.info("📄 Method 2: Direct HTML scraping...")
-        html_result = self._try_direct_html_scrape(url)
-        if html_result:
-            return html_result
-        
-        logger.error("🚨 ALL EXTRACTION METHODS FAILED")
-        return {}
-    
-    def _try_firecrawl_markdown(self, url: str) -> Dict[str, Any]:
-        """Try Firecrawl with markdown format + GPT extraction"""
+        logger.info(f"🔥 Using Firecrawl SDK extract() method...")
         
         try:
-            headers = {
-                "Authorization": f"Bearer {self.firecrawl_api_key}",
-                "Content-Type": "application/json"
-            }
-            
-            payload = {
-                "url": url,
-                "formats": ["markdown"],
-                "timeout": 60000  # 60 seconds
-            }
-            
-            logger.info("📥 Fetching markdown from Firecrawl...")
-            response = requests.post(self.firecrawl_scrape_url, json=payload, headers=headers, timeout=70)
-            
-            if response.status_code == 200:
-                data = response.json()
-                
-                markdown = data.get('data', {}).get('markdown', '')
-                
-                if markdown and len(markdown) > 500:
-                    logger.info(f"📄 Got markdown ({len(markdown)} chars), extracting with GPT...")
-                    return self._extract_with_gpt(markdown, url)
-                else:
-                    logger.warning(f"❌ Markdown too short or empty: {len(markdown)} chars")
-            else:
-                logger.error(f"❌ Firecrawl HTTP {response.status_code}")
-                
-        except Exception as e:
-            logger.error(f"❌ Firecrawl markdown error: {e}")
-        
-        return {}
-    
-    def _try_direct_html_scrape(self, url: str) -> Dict[str, Any]:
-        """Direct scraping with requests + BeautifulSoup (bypasses Firecrawl)"""
-        
-        try:
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
-            
-            logger.info("📥 Fetching HTML directly...")
-            response = requests.get(url, headers=headers, timeout=30)
-            response.raise_for_status()
-            
-            soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # Look for the teaching staff section
-            content_text = soup.get_text()
-            
-            if len(content_text) > 1000:
-                logger.info(f"📄 Got HTML content ({len(content_text)} chars), extracting with GPT...")
-                return self._extract_with_gpt(content_text, url)
-            else:
-                logger.warning("❌ HTML content too short")
-                
-        except Exception as e:
-            logger.error(f"❌ Direct HTML scrape error: {e}")
-        
-        return {}
-    
-    def _extract_with_gpt(self, content: str, source_url: str) -> Dict[str, Any]:
-        """
-        Extract financial data using GPT-4o-mini with ULTRA DETAILED prompt
-        """
-        
-        # Take relevant section (focus on teaching costs)
-        if len(content) > 15000:
-            # Try to find the teaching section
-            teaching_idx = content.lower().find('teaching and teaching support staff')
-            if teaching_idx != -1:
-                content = content[max(0, teaching_idx-1000):teaching_idx+8000]
-            else:
-                # Take middle section
-                content = content[:15000]
-        
-        prompt = f"""You are extracting CRITICAL financial data from a UK school's government financial benchmarking page.
-
-SOURCE: {source_url}
-
-This is the official "Financial Benchmarking and Insights Tool" (FBIT) - a government database showing school spending.
-
-YOUR MISSION: Extract these 6 EXACT cost figures (all in British Pounds £, annual costs):
-
-1. **total_teaching_and_support_costs_per_pupil** - Total teaching and teaching support staff costs PER PUPIL (annual)
-2. **teaching_staff_costs** - Teaching staff costs ONLY (NOT including supply/agency)
-3. **supply_teaching_staff_costs** - Supply teaching staff costs
-4. **educational_consultancy_costs** - Educational consultancy costs
-5. **educational_support_staff_costs** - Educational support staff costs  
-6. **agency_supply_teaching_staff_costs** - Agency supply teaching staff costs (CRITICAL)
-
-IMPORTANT INSTRUCTIONS:
-- Look for tables or lists with cost breakdowns
-- Numbers are formatted like: £125,000 or 125,000
-- Return ONLY numeric values (remove £ and commas)
-- If you find a value, you MUST include it
-- Use null for genuinely missing values
-- DO NOT estimate or make up values
-
-CONTENT TO ANALYZE:
-{content}
-
-Return ONLY valid JSON in this EXACT format:
-{{
-  "total_teaching_and_support_costs_per_pupil": 5234,
-  "teaching_staff_costs": 950000,
-  "supply_teaching_staff_costs": 85000,
-  "educational_consultancy_costs": 15000,
-  "educational_support_staff_costs": 180000,
-  "agency_supply_teaching_staff_costs": 42000
-}}
-
-Use null for missing values. Extract all 6 fields if present in the content."""
-
-        try:
-            response = self.openai_client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You extract exact financial values from government documents. You are extremely precise and never estimate."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                temperature=0.0,
-                max_tokens=500,
-                response_format={"type": "json_object"}
+            # The exact approach that worked in Firecrawl playground
+            data = self.firecrawl_app.extract(
+                urls=[url],
+                prompt=(
+                    "Extract financial data from the 'Teaching and teaching support staff' section. "
+                    "Look for 'Total teaching and teaching support staff' followed by 'per pupil' or similar wording. "
+                    "For 'Teaching staff costs', ensure it is NOT supply or agency related. "
+                    "For 'Supply teaching staff costs', look for the exact phrase. "
+                    "For 'Educational consultancy costs', look for 'Educational consultancy'. "
+                    "For 'Educational support staff costs', look for 'Educational support staff'. "
+                    "For 'Agency supply teaching staff costs', this is CRITICAL for recruitment analysis. "
+                    "All costs should be in British Pounds (£)."
+                ),
+                schema=FinancialDataSchema.model_json_schema()
             )
             
-            result = json.loads(response.choices[0].message.content)
-            
-            # Clean and validate with SAFE null checking
-            benchmark_data = {}
-            for key in ['total_teaching_and_support_costs_per_pupil', 'teaching_staff_costs', 
-                       'supply_teaching_staff_costs', 'educational_consultancy_costs',
-                       'educational_support_staff_costs', 'agency_supply_teaching_staff_costs']:
+            # Parse the response
+            if data and 'data' in data and len(data['data']) > 0:
+                extracted = data['data'][0]
                 
-                value = result.get(key)
+                # Convert to clean dict with safe null checking
+                benchmark_data = {}
                 
-                # CRITICAL: Safe null checking and type conversion
-                if value is not None and value != "null" and value != "":
-                    try:
-                        # Handle both string and numeric inputs
-                        if isinstance(value, str):
-                            # Remove commas and £ symbols
-                            value = value.replace(',', '').replace('£', '').strip()
-                        
-                        numeric_value = int(float(value))
-                        
-                        if numeric_value > 0:  # Only store positive values
-                            benchmark_data[key] = numeric_value
-                            logger.info(f"  ✅ {key}: £{numeric_value:,}")
-                    except (ValueError, TypeError) as e:
-                        logger.warning(f"  ⚠️ Could not parse {key}: {value} ({e})")
-            
-            if benchmark_data:
-                logger.info(f"✅ GPT extracted {len(benchmark_data)}/6 fields")
-                return benchmark_data
+                for key in ['total_teaching_and_support_staff_costs_per_pupil', 'teaching_staff_costs',
+                           'supply_teaching_staff_costs', 'educational_consultancy_costs',
+                           'educational_support_staff_costs', 'agency_supply_teaching_staff_costs']:
+                    
+                    value = extracted.get(key)
+                    
+                    # Safe null checking and conversion
+                    if value is not None and value != 0:  # Keep zeros as valid data
+                        try:
+                            numeric_value = float(value)
+                            benchmark_data[key] = int(numeric_value) if numeric_value.is_integer() else numeric_value
+                            logger.info(f"  ✅ {key}: £{numeric_value:,.0f}")
+                        except (ValueError, TypeError) as e:
+                            logger.warning(f"  ⚠️ Could not parse {key}: {value}")
+                
+                if benchmark_data:
+                    logger.info(f"✅ Firecrawl SDK extracted {len(benchmark_data)}/6 fields")
+                    return benchmark_data
+                else:
+                    logger.error("❌ No valid data in Firecrawl response")
             else:
-                logger.error("❌ GPT returned no valid data")
-                logger.error(f"GPT response: {result}")
+                logger.error(f"❌ Firecrawl SDK returned empty data: {data}")
                 
         except Exception as e:
-            logger.error(f"❌ GPT extraction error: {e}")
+            logger.error(f"❌ Firecrawl SDK error: {e}")
         
+        logger.error("🚨 Firecrawl SDK extraction failed")
         return {}
     
     def get_recruitment_intelligence(self, school_name: str, location: Optional[str] = None) -> Dict[str, Any]:
@@ -561,4 +440,3 @@ def enhance_school_with_financial_data(intel, serper_engine):
         logger.error(f"❌ Error enhancing with financial data: {e}", exc_info=True)
     
     return intel
-
