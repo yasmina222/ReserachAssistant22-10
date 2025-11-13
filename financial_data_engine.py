@@ -6,18 +6,17 @@ import os
 from typing import Dict, Optional, Tuple, List, Any
 from datetime import datetime
 from models import ConversationStarter
-from bs4 import BeautifulSoup
 from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
 class FinancialDataEngine:
-    """Retrieves school financial data from government sources"""
+    """Retrieves school financial data from government sources using Firecrawl"""
     
     def __init__(self, serper_engine):
         """Initialize with existing Serper engine"""
         self.serper = serper_engine
-        self.scraper_api_key = os.getenv('SCRAPER_API_KEY')
+        self.firecrawl_api_key = "fc-d1b7c888232f480d8058d9f137460741"
         
         # Initialize OpenAI client for GPT extraction
         try:
@@ -27,6 +26,7 @@ class FinancialDataEngine:
             openai_key = os.getenv("OPENAI_API_KEY")
         
         self.openai_client = OpenAI(api_key=openai_key)
+        logger.info("✅ Financial engine initialized with Firecrawl")
         
     def get_school_urn(self, school_name: str, location: Optional[str] = None) -> Dict[str, Any]:
         """Find school URN using government database"""
@@ -56,14 +56,14 @@ class FinancialDataEngine:
             gias_match = re.search(r'/Establishments/Establishment/Details/(\d{5,7})', url)
             if gias_match:
                 urn_from_url = gias_match.group(1)
-                logger.info(f"Found URN from GIAS URL: {urn_from_url}")
+                logger.info(f"✅ Found URN from GIAS URL: {urn_from_url}")
             
             if not urn_from_url:
                 urn_pattern = r'URN:?\s*(\d{5,7})'
                 urn_match = re.search(urn_pattern, text)
                 if urn_match:
                     urn_from_url = urn_match.group(1)
-                    logger.info(f"Found URN from text: {urn_from_url}")
+                    logger.info(f"✅ Found URN from text: {urn_from_url}")
             
             if urn_from_url:
                 official_name = self._extract_school_name(result)
@@ -85,104 +85,86 @@ class FinancialDataEngine:
                 })
         
         if not urn_matches:
-            logger.warning(f"No URN found for {school_name}")
+            logger.warning(f"❌ No URN found for {school_name}")
             return {'urn': None, 'confidence': 0.0, 'error': 'No URN found'}
         
         urn_matches.sort(key=lambda x: x['confidence'], reverse=True)
         best_match = urn_matches[0]
         best_match['alternatives'] = urn_matches[1:3] if len(urn_matches) > 1 else []
         
-        logger.info(f"Best URN match: {best_match['urn']} for {best_match['official_name']}")
+        logger.info(f"✅ Best URN match: {best_match['urn']} for {best_match['official_name']}")
         
         return best_match
     
-    def _fetch_fbit_page(self, urn: str) -> Optional[str]:
-        """Fetch actual FBIT page content using ScraperAPI"""
+    def _scrape_with_firecrawl(self, url: str) -> Optional[str]:
+        """
+        Use Firecrawl API to scrape JavaScript-rendered content
+        Firecrawl is designed for complex sites like government portals
+        """
         
-        if not self.scraper_api_key:
-            logger.error("SCRAPER_API_KEY not found in environment")
-            return None
+        firecrawl_url = "https://api.firecrawl.dev/v1/scrape"
         
-        base_url = f"https://financial-benchmarking-and-insights-tool.education.gov.uk/school/{urn}"
-        
-        params = {
-            'api_key': self.scraper_api_key,
-            'url': base_url,
-            'render': 'true',
-            'country_code': 'gb'
+        headers = {
+            "Authorization": f"Bearer {self.firecrawl_api_key}",
+            "Content-Type": "application/json"
         }
         
-        logger.info(f"Fetching FBIT page: {base_url}")
+        payload = {
+            "url": url,
+            "formats": ["markdown", "html"],
+            "waitFor": 3000  # Wait 3 seconds for JavaScript to load
+        }
+        
+        logger.info(f"🔥 Firecrawl scraping: {url}")
         
         try:
-            response = requests.get('http://api.scraperapi.com', params=params, timeout=30)
+            response = requests.post(firecrawl_url, json=payload, headers=headers, timeout=30)
             
             if response.status_code == 200:
-                if 'Page not found' not in response.text:
-                    logger.info("✅ Successfully fetched FBIT page")
-                    return response.text
+                data = response.json()
+                
+                # Firecrawl returns both markdown and HTML
+                if data.get('success'):
+                    markdown_content = data.get('data', {}).get('markdown', '')
+                    html_content = data.get('data', {}).get('html', '')
+                    
+                    # Prefer markdown (cleaner) but fall back to HTML
+                    content = markdown_content if markdown_content else html_content
+                    
+                    if content:
+                        logger.info(f"✅ Firecrawl success! Got {len(content)} characters")
+                        return content
+                    else:
+                        logger.error("❌ Firecrawl returned empty content")
+                        return None
                 else:
-                    logger.error(f"URN {urn} returned a 404 or invalid page")
+                    logger.error(f"❌ Firecrawl failed: {data.get('error', 'Unknown error')}")
                     return None
             else:
-                logger.error(f"ScraperAPI returned status {response.status_code}")
+                logger.error(f"❌ Firecrawl HTTP {response.status_code}: {response.text[:200]}")
                 return None
                 
         except Exception as e:
-            logger.error(f"Error fetching FBIT page: {e}")
+            logger.error(f"❌ Firecrawl exception: {e}")
             return None
     
-    def _fetch_fbit_comparison_page(self, urn: str) -> Optional[str]:
+    def _extract_benchmark_with_gpt(self, content: str, urn: str) -> Dict[str, Any]:
         """
-        Fetch FBIT comparison page using ScraperAPI
-        """
-        
-        if not self.scraper_api_key:
-            logger.error("SCRAPER_API_KEY not found in environment")
-            return None
-        
-        comparison_url = f"https://financial-benchmarking-and-insights-tool.education.gov.uk/school/{urn}/comparison"
-        
-        params = {
-            'api_key': self.scraper_api_key,
-            'url': comparison_url,
-            'render': 'true',
-            'country_code': 'gb'
-        }
-        
-        logger.info(f"🔍 Fetching FBIT comparison page: {comparison_url}")
-        
-        try:
-            response = requests.get('http://api.scraperapi.com', params=params, timeout=30)
-            
-            if response.status_code == 200:
-                logger.info("✅ Successfully fetched FBIT comparison page")
-                return response.text
-            else:
-                logger.error(f"ScraperAPI returned status {response.status_code}")
-                return None
-                
-        except Exception as e:
-            logger.error(f"Error fetching FBIT comparison page: {e}")
-            return None
-    
-    def _extract_benchmark_with_gpt(self, html_content: str, urn: str) -> Dict[str, Any]:
-        """
-        NEW: Use GPT-4o-mini to extract benchmark data from HTML
-        This is more reliable than parsing HTML structure
+        Use GPT-4o-mini to extract benchmark data from scraped content
+        Works with both HTML and markdown
         """
         
         logger.info("🤖 Using GPT-4o-mini to extract benchmark data...")
         
-        # Truncate HTML if too long (keep first 50K chars which should contain the data)
-        html_snippet = html_content[:50000] if len(html_content) > 50000 else html_content
+        # Truncate if too long
+        content_snippet = content[:30000] if len(content) > 30000 else content
         
         prompt = f"""
-Extract the following financial data from this UK school's FBIT comparison page HTML.
+Extract financial data from this UK school's FBIT comparison page.
 
-CRITICAL: Return ONLY valid JSON with these exact field names. Use null for any missing values.
+CRITICAL: Return ONLY valid JSON. Use null for missing values.
 
-Required fields (all are annual costs in pounds £):
+Required fields (annual costs in £):
 1. total_expenditure_per_pupil
 2. teaching_and_support_costs_per_pupil  
 3. teaching_staff_costs
@@ -191,7 +173,7 @@ Required fields (all are annual costs in pounds £):
 6. educational_support_staff_costs
 7. agency_supply_teaching_staff_costs
 
-Return format:
+Example format:
 {{
     "total_expenditure_per_pupil": 7200,
     "teaching_and_support_costs_per_pupil": 5100,
@@ -202,10 +184,10 @@ Return format:
     "agency_supply_teaching_staff_costs": 42000
 }}
 
-HTML content:
-{html_snippet}
+Page content:
+{content_snippet}
 
-Return ONLY the JSON object, no explanations.
+Return ONLY the JSON object with numeric values (no £, no commas).
 """
         
         try:
@@ -214,7 +196,7 @@ Return ONLY the JSON object, no explanations.
                 messages=[
                     {
                         "role": "system",
-                        "content": "You extract financial data from HTML. Return only valid JSON with numeric values (no currency symbols, no commas). Use null for missing data."
+                        "content": "You extract financial data from web content. Return only valid JSON with numeric values. Use null for missing data."
                     },
                     {
                         "role": "user",
@@ -230,11 +212,11 @@ Return ONLY the JSON object, no explanations.
             benchmark_data = json.loads(result_text)
             
             # Log what we found
-            found_count = sum(1 for v in benchmark_data.values() if v is not None and v != "null")
+            found_count = sum(1 for v in benchmark_data.values() if v is not None and v != "null" and v != 0)
             logger.info(f"✅ GPT extracted {found_count}/7 benchmark fields")
             
             for key, value in benchmark_data.items():
-                if value and value != "null":
+                if value and value != "null" and value != 0:
                     logger.info(f"  ✓ {key}: £{value:,}")
             
             return benchmark_data
@@ -246,10 +228,10 @@ Return ONLY the JSON object, no explanations.
     def get_financial_data(self, urn: str, entity_name: str = None, is_trust: bool = False) -> Dict[str, Any]:
         """
         Retrieve financial data from FBIT website using URN
-        UPDATED: Now uses GPT-4o-mini to extract benchmark data
+        NOW USING FIRECRAWL for reliable scraping
         """
         
-        logger.info(f"Fetching financial data for URN {urn}")
+        logger.info(f"💰 Fetching financial data for URN {urn}")
         
         financial_data = {
             'urn': urn,
@@ -260,60 +242,47 @@ Return ONLY the JSON object, no explanations.
             'extracted_date': datetime.now().isoformat()
         }
         
-        html_content = self._fetch_fbit_page(urn)
+        # Scrape the main FBIT page with Firecrawl
+        main_page_content = self._scrape_with_firecrawl(financial_data['source_url'])
         
-        if not html_content:
-            logger.warning("Failed to fetch FBIT page")
-            return financial_data
-        
-        soup = BeautifulSoup(html_content, 'html.parser')
-        
-        # Extract basic financial metrics from main page
-        headline_figures = soup.find_all('li', class_='app-headline-figures')
-        for figure in headline_figures:
-            label = figure.find('p', class_='govuk-body-l govuk-!-font-weight-bold')
-            value = figure.find_all('p', class_='govuk-body-l govuk-!-margin-bottom-2')
+        if main_page_content:
+            # Extract basic financial metrics (in-year balance, revenue reserve)
+            balance_match = re.search(r'In year balance[:\s]*[-−]?£([0-9,]+)', main_page_content, re.IGNORECASE)
+            if balance_match:
+                amount = int(balance_match.group(1).replace(',', ''))
+                if '−' in main_page_content[max(0, balance_match.start()-10):balance_match.start()] or '-' in main_page_content[max(0, balance_match.start()-10):balance_match.start()]:
+                    amount = -amount
+                financial_data['in_year_balance'] = amount
+                logger.info(f"  ✓ In-year balance: £{amount:,}")
             
-            if label and value:
-                label_text = label.get_text(strip=True).lower()
-                value_text = value[-1].get_text(strip=True) if value else ''
-                
-                value_match = re.search(r'[-−]?£([\d,]+)', value_text)
-                if value_match:
-                    amount = int(value_match.group(1).replace(',', ''))
-                    if '-' in value_text or '−' in value_text:
-                        amount = -amount
-                    
-                    if 'in year balance' in label_text:
-                        financial_data['in_year_balance'] = amount
-                    elif 'revenue reserve' in label_text:
-                        financial_data['revenue_reserve'] = amount
+            reserve_match = re.search(r'Revenue reserve[:\s]*£([0-9,]+)', main_page_content, re.IGNORECASE)
+            if reserve_match:
+                financial_data['revenue_reserve'] = int(reserve_match.group(1).replace(',', ''))
+                logger.info(f"  ✓ Revenue reserve: £{financial_data['revenue_reserve']:,}")
         
-        # NEW: Fetch comparison page and use GPT to extract
-        logger.info("🔍 Fetching benchmark comparison data...")
-        comparison_html = self._fetch_fbit_comparison_page(urn)
+        # NOW SCRAPE THE COMPARISON PAGE (the one with all the good data!)
+        logger.info("🔥 Fetching benchmark comparison page...")
+        comparison_content = self._scrape_with_firecrawl(financial_data['comparison_url'])
         
-        if comparison_html:
-            benchmark_data = self._extract_benchmark_with_gpt(comparison_html, urn)
+        if comparison_content:
+            benchmark_data = self._extract_benchmark_with_gpt(comparison_content, urn)
             
             if benchmark_data:
                 financial_data['benchmark_data'] = benchmark_data
                 logger.info(f"✅ Added benchmark data with {len(benchmark_data)} fields")
             else:
-                logger.warning("⚠️ No benchmark data extracted")
+                logger.warning("⚠️ No benchmark data extracted from comparison page")
         else:
-            logger.warning("⚠️ Could not fetch comparison page")
+            logger.warning("⚠️ Could not fetch comparison page with Firecrawl")
         
-        # Calculate recruitment estimates
+        # Calculate recruitment estimates from benchmark data
         if 'benchmark_data' in financial_data:
             benchmark = financial_data['benchmark_data']
             
-            # Use supply costs from benchmark data
-            supply_costs = benchmark.get('supply_teaching_staff_costs')
-            agency_costs = benchmark.get('agency_supply_teaching_staff_costs')
+            supply_costs = benchmark.get('supply_teaching_staff_costs', 0)
+            agency_costs = benchmark.get('agency_supply_teaching_staff_costs', 0)
             
             if supply_costs or agency_costs:
-                # Estimate recruitment spend as 25% of supply costs
                 recruitment_base = (supply_costs or 0) + (agency_costs or 0)
                 
                 financial_data['recruitment_estimates'] = {
@@ -321,6 +290,7 @@ Return ONLY the JSON object, no explanations.
                     'high': int(recruitment_base * 0.30),
                     'midpoint': int(recruitment_base * 0.25)
                 }
+                logger.info(f"  ✓ Recruitment estimate: £{financial_data['recruitment_estimates']['midpoint']:,}")
         
         return financial_data
     
@@ -335,7 +305,7 @@ Return ONLY the JSON object, no explanations.
                 'suggestions': urn_result.get('alternatives', [])
             }
         
-        logger.info(f"Found URN {urn_result['urn']} for {urn_result['official_name']}")
+        logger.info(f"✅ Found URN {urn_result['urn']} for {urn_result['official_name']}")
         
         financial_data = self.get_financial_data(
             urn_result['urn'],
@@ -374,14 +344,14 @@ Return ONLY the JSON object, no explanations.
                 insights.append(f"Supply teaching: £{benchmark['supply_teaching_staff_costs']:,}/year")
             
             if benchmark.get('agency_supply_teaching_staff_costs'):
-                insights.append(f"Agency supply: £{benchmark['agency_supply_teaching_staff_costs']:,}/year - HIGH PRIORITY TARGET")
+                insights.append(f"🎯 Agency supply: £{benchmark['agency_supply_teaching_staff_costs']:,}/year - HIGH PRIORITY TARGET")
         
         if 'in_year_balance' in financial_data:
             balance = financial_data['in_year_balance']
             if balance < 0:
-                insights.append(f"Deficit: £{abs(balance):,} - needs cost savings")
+                insights.append(f"⚠️ Deficit: £{abs(balance):,} - needs cost savings urgently")
             else:
-                insights.append(f"Surplus: £{balance:,}")
+                insights.append(f"✅ Surplus: £{balance:,}")
         
         return insights
     
@@ -392,17 +362,38 @@ Return ONLY the JSON object, no explanations.
         if 'benchmark_data' in financial_data and financial_data['benchmark_data']:
             benchmark = financial_data['benchmark_data']
             
-            if benchmark.get('agency_supply_teaching_staff_costs', 0) > 0:
+            agency = benchmark.get('agency_supply_teaching_staff_costs', 0)
+            if agency > 0:
+                savings = int(agency * 0.25)
                 starters.append(
-                    f"I see you're spending £{benchmark['agency_supply_teaching_staff_costs']:,} on agency supply staff. "
-                    f"Protocol Education typically saves schools 20-30% on these costs with better quality guarantees."
+                    f"I noticed from the government financial data that you're spending £{agency:,} annually on agency supply staff. "
+                    f"Protocol Education typically saves schools 20-30% (approximately £{savings:,}) on these costs "
+                    f"with better quality guarantees and dedicated account management."
                 )
             
-            if benchmark.get('supply_teaching_staff_costs', 0) > 50000:
+            supply = benchmark.get('supply_teaching_staff_costs', 0)
+            if supply > 50000:
                 starters.append(
-                    f"Your £{benchmark['supply_teaching_staff_costs']:,} supply costs suggest regular staffing gaps. "
-                    f"Our long-term supply solutions typically reduce costs by 15-25%."
+                    f"Your total supply teaching costs of £{supply:,} suggest regular staffing challenges. "
+                    f"Many schools find that our long-term supply solutions reduce costs by 15-25% while improving continuity. "
+                    f"Would you be open to a brief conversation about how we might help?"
                 )
+            
+            consultancy = benchmark.get('educational_consultancy_costs', 0)
+            if consultancy > 15000:
+                starters.append(
+                    f"I see you're investing £{consultancy:,} in educational consultancy. "
+                    f"Often this indicates leadership transitions or Ofsted preparation. "
+                    f"We've helped many schools in similar situations with strategic staffing solutions during periods of change."
+                )
+        
+        balance = financial_data.get('in_year_balance', 0)
+        if balance < -30000:
+            starters.append(
+                f"I understand your school is managing a deficit of £{abs(balance):,}. "
+                f"Protocol Education has specific programs to help schools reduce recruitment and supply costs "
+                f"as part of financial recovery plans. Many of our clients have seen 20-30% savings within the first year."
+            )
         
         return starters
     
@@ -472,7 +463,7 @@ def enhance_school_with_financial_data(intel, serper_engine):
                             topic="Recruitment Costs",
                             detail=starter,
                             source_url=financial_intel.get('financial', {}).get('comparison_url', ''),
-                            relevance_score=0.9
+                            relevance_score=0.95
                         )
                     )
             
@@ -480,6 +471,6 @@ def enhance_school_with_financial_data(intel, serper_engine):
             logger.info(f"✅ Enhanced {intel.school_name} with financial data")
         
     except Exception as e:
-        logger.error(f"Error enhancing school with financial data: {e}")
+        logger.error(f"❌ Error enhancing school with financial data: {e}")
     
     return intel
