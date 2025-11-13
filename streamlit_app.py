@@ -560,7 +560,7 @@ def display_competitors(intel):
         st.success(" No competitor agencies detected")
 
 def display_financial_data(intel):
-    """Display financial data and recruitment costs"""
+    """Display financial data - RAW DATA ONLY, NO CALCULATIONS"""
     
     if hasattr(intel, 'financial_data') and intel.financial_data:
         financial = intel.financial_data
@@ -572,91 +572,57 @@ def display_financial_data(intel):
         if 'entity_found' in financial:
             entity = financial['entity_found']
             
-            if entity['type'] == 'Trust':
-                st.info(f" Found trust-level financial data for **{entity['name']}** which manages {entity.get('schools_in_trust', 'multiple')} schools including {financial['school_searched']}")
-            
             col1, col2, col3 = st.columns(3)
             with col1:
                 st.write(f"**Entity:** {entity['name']}")
                 st.write(f"**Type:** {entity['type']}")
             with col2:
                 st.write(f"**URN:** {entity['urn']}")
-                st.write(f"**Schools:** {entity.get('schools_in_trust', 'N/A')}")
             with col3:
                 st.write(f"**Match Confidence:** {entity.get('confidence', 0):.0%}")
-                if entity['type'] == 'Trust':
-                    st.write("**Economies of Scale:**")
         
         st.divider()
         
+        # Display RAW extracted data - NO CALCULATIONS
         if 'financial' in financial and financial['financial']:
             fin_data = financial['financial']
             
-            if 'recruitment_estimates' in fin_data:
-                st.subheader(" Annual Recruitment Costs")
-                estimates = fin_data['recruitment_estimates']
+            # Show raw extracted benchmark data
+            if 'raw_extracted_data' in fin_data:
+                st.subheader("📊 Government Financial Data (Annual Costs)")
+                raw = fin_data['raw_extracted_data']
                 
-                if 'total_trust' in estimates:
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Trust Total", f"£{estimates['total_trust']:,}", help="Total recruitment spend across all schools")
-                    with col2:
-                        st.metric("Per School Average", f"£{estimates['per_school_avg']:,}", help="Average recruitment cost per school in trust")
-                    with col3:
-                        st.metric("Savings vs Independent", estimates['economies_of_scale_saving'], help="Cost savings from trust-wide recruitment")
-                    if estimates.get('explanation'):
-                        st.success(f" {estimates['explanation']}")
-                else:
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Low Estimate", f"£{estimates['low']:,}")
-                    with col2:
-                        st.metric("**Best Estimate**", f"£{estimates['midpoint']:,}")
-                    with col3:
-                        st.metric("High Estimate", f"£{estimates['high']:,}")
-            
-            if 'supply_staff_costs' in fin_data or (fin_data.get('per_school_estimates', {}).get('avg_supply')):
-                st.subheader(" Supply Staff Costs")
-                if 'per_school_estimates' in fin_data and fin_data['per_school_estimates'].get('avg_supply'):
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.metric("Trust Total Supply Costs", f"£{fin_data.get('supply_staff_costs', 0):,}")
-                    with col2:
-                        st.metric("Average Per School", f"£{fin_data['per_school_estimates']['avg_supply']:,}")
-                else:
-                    st.metric("Annual Supply Costs", f"£{fin_data.get('supply_staff_costs', 0):,}")
-            
-            if 'recruitment_estimates' in fin_data and 'supply_staff_costs' in fin_data:
-                st.subheader("📊 Total Opportunity")
-                if 'total_trust' in fin_data['recruitment_estimates']:
-                    total = fin_data['recruitment_estimates']['total_trust'] + fin_data.get('supply_staff_costs', 0)
-                    st.metric("Total Trust Temporary Staffing Spend", f"£{total:,}", help="Combined recruitment + supply costs across trust")
-                else:
-                    total = fin_data['recruitment_estimates']['midpoint'] + fin_data.get('supply_staff_costs', 0)
-                    st.metric("Total Temporary Staffing Spend", f"£{total:,}", help="Combined recruitment + supply costs")
-            
-            with st.expander(" Additional Financial Data"):
-                col1, col2 = st.columns(2)
+                col1, col2, col3 = st.columns(3)
                 with col1:
-                    if 'teaching_staff_per_pupil' in fin_data:
-                        st.metric("Teaching Staff Cost", f"£{fin_data['teaching_staff_per_pupil']:,}/pupil")
-                    if 'total_expenditure' in fin_data:
-                        st.metric("Total Expenditure", f"£{fin_data['total_expenditure']:,}")
+                    if raw.get('teaching_staff_costs'):
+                        st.metric("Teaching Staff Costs", f"£{raw['teaching_staff_costs']:,}")
+                    if raw.get('supply_teaching_staff_costs') is not None:
+                        st.metric("Supply Teaching Costs", f"£{raw['supply_teaching_staff_costs']:,}")
                 with col2:
-                    if 'admin_supplies_per_pupil' in fin_data:
-                        st.metric("Admin Supplies", f"£{fin_data['admin_supplies_per_pupil']:,}/pupil")
-                    if 'indirect_employee_expenses' in fin_data:
-                        st.metric("Indirect Employee Expenses", f"£{fin_data['indirect_employee_expenses']:,}")
+                    if raw.get('agency_supply_teaching_staff_costs') is not None:
+                        st.metric("Agency Supply Costs", f"£{raw['agency_supply_teaching_staff_costs']:,}")
+                    if raw.get('educational_support_staff_costs'):
+                        st.metric("Educational Support Costs", f"£{raw['educational_support_staff_costs']:,}")
+                with col3:
+                    if raw.get('educational_consultancy_costs') is not None:
+                        st.metric("Consultancy Costs", f"£{raw['educational_consultancy_costs']:,}")
+                    if raw.get('total_teaching_and_support_costs_per_pupil'):
+                        st.metric("Cost Per Pupil", f"£{raw['total_teaching_and_support_costs_per_pupil']:,.2f}")
+                
+                st.divider()
             
+            # Source link
             if 'source_url' in fin_data:
                 st.caption(f"Data source: [FBIT Government Database]({fin_data['source_url']})")
                 st.caption(f"Extracted: {fin_data.get('extracted_date', 'N/A')}")
         
+        # Key Insights (already clean - no calculations)
         if 'insights' in financial and financial['insights']:
             st.subheader("💡 Key Insights")
             for insight in financial['insights']:
                 st.write(f"• {insight}")
         
+        # Conversation Starters (already clean - no calculations)
         if 'conversation_starters' in financial and financial['conversation_starters']:
             st.subheader("💬 Cost-Focused Conversation Starters")
             for i, starter in enumerate(financial['conversation_starters'], 1):
