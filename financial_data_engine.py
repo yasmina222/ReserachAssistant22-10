@@ -18,7 +18,7 @@ class FinancialDataEngine:
         self.firecrawl_api_key = "fc-d1b7c888232f480d8058d9f137460741"
         self.firecrawl_api_url = "https://api.firecrawl.dev/v2/scrape"
         
-        logger.info("✅ Financial engine initialized with Firecrawl")
+        logger.info("✅ Financial engine initialised")
         
     def get_school_urn(self, school_name: str, location: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -521,4 +521,3 @@ def enhance_school_with_financial_data(intel, serper_engine):
         logger.error(f"❌ Error enhancing with financial data: {e}")
     
     return intel
-Could not connect to the reCAPTCHA service. Please check your internet connection and reload to get a reCAPTCHA challenge.
