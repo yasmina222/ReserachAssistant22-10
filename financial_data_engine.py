@@ -207,14 +207,13 @@ class FinancialDataEngine:
     
     def _scrape_comparison_page_v2(self, url: str) -> Dict[str, Any]:
         """
-        WORKING METHOD: Use Firecrawl SDK with Pydantic schema
-        This is what you tested in the Firecrawl playground and it WORKS!
+        WORKING METHOD: Use Firecrawl SDK - FIXED RESPONSE PARSING
         """
         
         logger.info(f"🔥 Using Firecrawl SDK extract() method...")
         
         try:
-            # The exact approach that worked in Firecrawl playground
+            # Call Firecrawl extract
             result = self.firecrawl_app.extract(
                 urls=[url],
                 prompt=(
@@ -230,45 +229,46 @@ class FinancialDataEngine:
                 schema=FinancialDataSchema.model_json_schema()
             )
             
-            logger.info(f"📥 Firecrawl response: {result}")
+            logger.info(f"📥 RAW Firecrawl result: {result}")
             
-            # CRITICAL FIX: Data is at root level, not nested!
-            if result and hasattr(result, 'data') and result.data:
+            # CRITICAL: From docs, data is at result.data (the actual extracted dict)
+            if result and result.success and result.data:
                 extracted = result.data
+                logger.info(f"✅ Extracted object: {extracted}")
                 
-                logger.info(f"✅ Extracted data: {extracted}")
-                
-                # Convert to clean dict with safe null checking
+                # Convert to our format
                 benchmark_data = {}
                 
                 for key in ['total_teaching_and_support_staff_costs_per_pupil', 'teaching_staff_costs',
                            'supply_teaching_staff_costs', 'educational_consultancy_costs',
                            'educational_support_staff_costs', 'agency_supply_teaching_staff_costs']:
                     
-                    value = extracted.get(key) if isinstance(extracted, dict) else getattr(extracted, key, None)
+                    # Get value from dict or object attribute
+                    if isinstance(extracted, dict):
+                        value = extracted.get(key)
+                    else:
+                        value = getattr(extracted, key, None)
                     
-                    # Safe null checking - treat 0 as valid data!
+                    # Store ALL values including zeros
                     if value is not None:
                         try:
                             numeric_value = float(value)
-                            # Store ALL values including zeros (zero = no costs, which is valid!)
-                            benchmark_data[key] = int(numeric_value) if numeric_value.is_integer() else numeric_value
+                            benchmark_data[key] = int(numeric_value) if numeric_value == int(numeric_value) else numeric_value
                             logger.info(f"  ✅ {key}: £{numeric_value:,.0f}")
                         except (ValueError, TypeError) as e:
                             logger.warning(f"  ⚠️ Could not parse {key}: {value}")
                 
                 if benchmark_data:
-                    logger.info(f"✅ Firecrawl SDK extracted {len(benchmark_data)}/6 fields")
+                    logger.info(f"🎉 SUCCESS! Extracted {len(benchmark_data)}/6 fields")
                     return benchmark_data
                 else:
-                    logger.error("❌ No valid data after parsing")
+                    logger.error(f"❌ No valid fields extracted from: {extracted}")
             else:
-                logger.error(f"❌ Firecrawl SDK returned unexpected format: {result}")
+                logger.error(f"❌ Firecrawl failed: success={result.success if result else 'None'}")
                 
         except Exception as e:
-            logger.error(f"❌ Firecrawl SDK error: {e}", exc_info=True)
+            logger.error(f"❌ Firecrawl SDK exception: {e}", exc_info=True)
         
-        logger.error("🚨 Firecrawl SDK extraction failed")
         return {}
     
     def get_recruitment_intelligence(self, school_name: str, location: Optional[str] = None) -> Dict[str, Any]:
@@ -445,4 +445,3 @@ def enhance_school_with_financial_data(intel, serper_engine):
         logger.error(f"❌ Error enhancing with financial data: {e}", exc_info=True)
     
     return intel
-
