@@ -12,3 +12,5 @@ PyPDF2
 python-dotenv
 aiohttp
 aiofiles
+firecrawl-py
+pydantic
