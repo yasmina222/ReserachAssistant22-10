@@ -97,20 +97,6 @@ class FinancialDataEngine:
             }
         else:
             logger.error(f"❌ Could not extract URN from URL: {gias_url}")
-        urn_from_url = re.search(r'/Details/(\d{5,7})', gias_url)
-        if urn_from_url:
-            urn = urn_from_url.group(1)
-            logger.info(f"✅ URN FOUND: {urn}")
-            return {
-                'urn': urn,
-                'official_name': school_name,
-                'address': location or '',
-                'trust_name': None,
-                'confidence': 0.95,
-                'url': gias_url
-            }
-        else:
-            logger.error(f"❌ Could not extract URN from URL: {gias_url}")
             return {'urn': None, 'confidence': 0.0, 'error': 'Could not extract URN from URL'}
     
     def get_financial_data(self, urn: str, entity_name: str = None, is_trust: bool = False) -> Dict[str, Any]:
@@ -172,6 +158,7 @@ class FinancialDataEngine:
     def _extract_comparison_data(self, url: str) -> Optional[str]:
         """
         Extract comparison text from main FBIT page
+        Returns a single string with the complete comparison statement
         """
         
         try:
@@ -185,35 +172,51 @@ class FinancialDataEngine:
                 )
             )
             
-            logger.info(f"📥 Full Firecrawl result object: {result}")
-            logger.info(f"📥 result.data type: {type(result.data)}")
-            logger.info(f"📥 result.data content: {result.data}")
+            logger.info(f"📥 Firecrawl extraction result type: {type(result.data)}")
+            logger.info(f"📥 Firecrawl extraction content: {result.data}")
             
-            if result and result.success and result.data:
-                # result.data IS the dict directly (per Firecrawl docs)
-                data_dict = result.data
+            if not (result and result.success and result.data):
+                logger.error(f"❌ Firecrawl failed or returned no data")
+                return None
                 
-                # Extract comparison using the actual field names returned
-                comparison = (
-                    data_dict.get('completeComparisonStatement') or
-                    data_dict.get('spendingComparison') or
-                    data_dict.get('spending_comparison') or
-                    data_dict.get('comparison_text') or
-                    data_dict.get('spendingPerPupil', '')  # Fallback to just the spending amount
-                )
-                
-                if comparison:
-                    logger.info(f"✅ COMPARISON EXTRACTED: {comparison}")
-                    return str(comparison)
-                else:
-                    logger.error(f"❌ No comparison field found in: {list(data_dict.keys())}")
-            else:
-                logger.error(f"❌ Firecrawl failed: success={result.success if result else None}")
+            data_dict = result.data
+            
+            # CRITICAL: Ensure we're working with a dict
+            if not isinstance(data_dict, dict):
+                logger.error(f"❌ Expected dict, got {type(data_dict)}: {data_dict}")
+                return None
+            
+            # Try to extract the complete statement first (most comprehensive)
+            comparison = data_dict.get('completeComparisonStatement')
+            
+            if comparison and isinstance(comparison, str):
+                logger.info(f"✅ COMPARISON EXTRACTED (complete): {comparison}")
+                return comparison
+            
+            # Fallback: Build it from parts
+            spending = data_dict.get('spendingPerPupil', '')
+            comparison_part = data_dict.get('spendingComparison', '')
+            priority = data_dict.get('priorityLevel', '')
+            
+            if spending or comparison_part:
+                # Construct the comparison string from available parts
+                parts = [p for p in [spending, comparison_part, priority] if p]
+                constructed = " — ".join(parts)
+                logger.info(f"✅ COMPARISON CONSTRUCTED: {constructed}")
+                return constructed
+            
+            # Last resort: Return any available field
+            for key in ['spending_comparison', 'comparison_text', 'comparison']:
+                if val := data_dict.get(key):
+                    logger.info(f"✅ COMPARISON from {key}: {val}")
+                    return str(val)
+            
+            logger.error(f"❌ No usable comparison data in fields: {list(data_dict.keys())}")
+            return None
             
         except Exception as e:
             logger.error(f"❌ Error extracting comparison data: {e}", exc_info=True)
-        
-        return None
+            return None
     
     def _scrape_comparison_page_v2(self, url: str) -> Dict[str, Any]:
         """
