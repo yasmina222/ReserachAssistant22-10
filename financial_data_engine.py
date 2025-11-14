@@ -38,10 +38,18 @@ class FinancialDataEngine:
     def __init__(self, serper_engine):
         """Initialize with Firecrawl SDK"""
         self.serper = serper_engine
-        self.firecrawl_api_key = "fc-b2b5081d84fb439a9e9fcfc411248b50"
+        # HARDCODED API KEY - Update this with your new key
+        self.firecrawl_api_key = "fc-YOUR-NEW-API-KEY-HERE"
         
-        # Initialize Firecrawl SDK (THE GAME CHANGER!)
+        # Initialize Firecrawl SDK
         self.firecrawl_app = Firecrawl(api_key=self.firecrawl_api_key)
+        
+        # Log which key is being used (obscured for security)
+        if self.firecrawl_api_key:
+            masked_key = self.firecrawl_api_key[:10] + "..." + self.firecrawl_api_key[-4:]
+            logger.info(f"✅ Firecrawl API key loaded: {masked_key}")
+        else:
+            logger.error("❌ No Firecrawl API key found!")
         
         logger.info("✅ Financial engine initialized with Firecrawl SDK (WORKING VERSION!)")
         
@@ -101,7 +109,7 @@ class FinancialDataEngine:
     
     def get_financial_data(self, urn: str, entity_name: str = None, is_trust: bool = False) -> Dict[str, Any]:
         """
-        Retrieve financial data - FIXED VERSION with robust null checking
+        Retrieve financial data - FIXED VERSION with comparison data extraction
         """
         
         logger.info(f"💰 Fetching financial data for URN {urn}")
@@ -120,7 +128,9 @@ class FinancialDataEngine:
         comparison_text = self._extract_comparison_data(financial_data['source_url'])
         if comparison_text:
             financial_data['comparison_text'] = comparison_text
-            logger.info(f"✅ Comparison data: {comparison_text}")
+            logger.info(f"✅ Comparison data stored: {comparison_text}")
+        else:
+            logger.warning("⚠️ No comparison text extracted")
         
         # STEP 2: Get detailed benchmark data from comparison page
         logger.info("🔥 Attempting to scrape comparison page...")
@@ -158,8 +168,10 @@ class FinancialDataEngine:
     def _extract_comparison_data(self, url: str) -> Optional[str]:
         """
         Extract comparison text from main FBIT page
-        Returns a single string with the complete comparison statement
+        BULLETPROOF VERSION with comprehensive logging and fallback strategies
         """
+        
+        logger.info(f"🔥 Starting comparison data extraction from: {url}")
         
         try:
             result = self.firecrawl_app.extract(
@@ -176,7 +188,7 @@ class FinancialDataEngine:
             logger.info(f"📥 Firecrawl extraction content: {result.data}")
             
             if not (result and result.success and result.data):
-                logger.error(f"❌ Firecrawl failed or returned no data")
+                logger.error(f"❌ Firecrawl failed or returned no data - success={result.success if result else None}")
                 return None
                 
             data_dict = result.data
@@ -185,6 +197,8 @@ class FinancialDataEngine:
             if not isinstance(data_dict, dict):
                 logger.error(f"❌ Expected dict, got {type(data_dict)}: {data_dict}")
                 return None
+            
+            logger.info(f"📊 Available fields in response: {list(data_dict.keys())}")
             
             # Try to extract the complete statement first (most comprehensive)
             comparison = data_dict.get('completeComparisonStatement')
@@ -198,17 +212,22 @@ class FinancialDataEngine:
             comparison_part = data_dict.get('spendingComparison', '')
             priority = data_dict.get('priorityLevel', '')
             
+            logger.info(f"📊 Individual parts found:")
+            logger.info(f"  - spendingPerPupil: {spending}")
+            logger.info(f"  - spendingComparison: {comparison_part}")
+            logger.info(f"  - priorityLevel: {priority}")
+            
             if spending or comparison_part:
                 # Construct the comparison string from available parts
                 parts = [p for p in [spending, comparison_part, priority] if p]
                 constructed = " — ".join(parts)
-                logger.info(f"✅ COMPARISON CONSTRUCTED: {constructed}")
+                logger.info(f"✅ COMPARISON CONSTRUCTED from parts: {constructed}")
                 return constructed
             
             # Last resort: Return any available field
             for key in ['spending_comparison', 'comparison_text', 'comparison']:
                 if val := data_dict.get(key):
-                    logger.info(f"✅ COMPARISON from {key}: {val}")
+                    logger.info(f"✅ COMPARISON from fallback field '{key}': {val}")
                     return str(val)
             
             logger.error(f"❌ No usable comparison data in fields: {list(data_dict.keys())}")
@@ -223,7 +242,7 @@ class FinancialDataEngine:
         WORKING METHOD: Use Firecrawl SDK - FIXED RESPONSE PARSING
         """
         
-        logger.info(f"🔥 Using Firecrawl SDK extract() method...")
+        logger.info(f"🔥 Using Firecrawl SDK extract() method for: {url}")
         
         try:
             # Call Firecrawl extract
@@ -368,12 +387,15 @@ class FinancialDataEngine:
         # Get comparison text if available
         comparison_text = financial_data.get('comparison_text', '')
         
+        logger.info(f"🔍 Generating conversations - comparison_text present: {bool(comparison_text)}")
+        
         if 'benchmark_data' in financial_data and financial_data['benchmark_data']:
             benchmark = financial_data['benchmark_data']
             
             # PRIORITY 1: Comparison-based conversation (most compelling!)
             total_per_pupil = benchmark.get('total_teaching_and_support_costs_per_pupil')
             if total_per_pupil and total_per_pupil > 0 and comparison_text:
+                logger.info(f"✅ Creating comparison-based conversation starter")
                 if 'higher than' in comparison_text.lower() or 'above' in comparison_text.lower():
                     # School is spending MORE than similar schools
                     starters.append(
@@ -437,6 +459,8 @@ class FinancialDataEngine:
                 "quality guarantee. We'd be happy to provide a no-obligation comparison against your "
                 "current arrangements to show potential cost savings and service improvements."
             )
+        
+        logger.info(f"✅ Generated {len(starters)} conversation starters")
         
         return starters
 
