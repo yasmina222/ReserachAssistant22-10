@@ -595,17 +595,17 @@ def display_financial_data(intel):
                 col1, col2, col3 = st.columns(3)
                 with col1:
                     if raw.get('teaching_staff_costs'):
-                        st.metric("Teaching Staff Costs", f"£{raw['teaching_staff_costs']:,}")
+                        st.metric("Teaching Staff Costs", f"£{raw['teaching_staff_costs']:,} per pupil")")
                     if raw.get('supply_teaching_staff_costs') is not None:
-                        st.metric("Supply Teaching Costs", f"£{raw['supply_teaching_staff_costs']:,}")
+                        st.metric("Supply Teaching Costs", f"£{raw['supply_teaching_staff_costs']:,} per pupil")")
                 with col2:
                     if raw.get('agency_supply_teaching_staff_costs') is not None:
-                        st.metric("Agency Supply Costs", f"£{raw['agency_supply_teaching_staff_costs']:,}")
+                        st.metric("Agency Supply Costs", f"£{raw['agency_supply_teaching_staff_costs']:,} per pupil")")
                     if raw.get('educational_support_staff_costs'):
-                        st.metric("Educational Support Costs", f"£{raw['educational_support_staff_costs']:,}")
+                        st.metric("Educational Support Costs", f"£{raw['educational_support_staff_costs']:,} per pupil")")
                 with col3:
                     if raw.get('educational_consultancy_costs') is not None:
-                        st.metric("Consultancy Costs", f"£{raw['educational_consultancy_costs']:,}")
+                        st.metric("Consultancy Costs", f"£{raw['educational_consultancy_costs']:,} per pupil")")
                     if raw.get('total_teaching_and_support_costs_per_pupil'):
                         st.metric("Cost Per Pupil", f"£{raw['total_teaching_and_support_costs_per_pupil']:,.2f}")
                 
