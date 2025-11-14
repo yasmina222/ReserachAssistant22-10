@@ -1,6 +1,6 @@
 """
-Supporting Education Group AI Research Assistant - Streamlit Web Interface
-FIXED: Changed title + Removed black hover boxes on buttons/dropdowns
+AI Sales and Research Intelligence - Streamlit Web Interface
+UPDATED: Added debug logging, comparison data display, and temporarily disabled password
 """
 
 import streamlit as st
@@ -15,51 +15,45 @@ from exporter import IntelligenceExporter
 from cache import IntelligenceCache
 from models import ContactType
 
-def check_password():
-    """Returns True if the user had the correct password."""
-    def password_entered():
-        """Checks whether a password entered by the user is correct."""
-        if st.session_state["password"] == "SEG2025AI!":
-            st.session_state["password_correct"] = True
-            del st.session_state["password"]
-        else:
-            st.session_state["password_correct"] = False
-    if "password_correct" not in st.session_state:
-        st.title("🔒 SEG AI Research Assistant")
-        st.text_input(
-            "Enter Password", 
-            type="password", 
-            on_change=password_entered, 
-            key="password"
-        )
-        st.caption("Internal access only - Contact IT for credentials")
-        return False
-    elif not st.session_state["password_correct"]:
-        st.title("🔒 SEG AI Research Assistant")
-        st.text_input(
-            "Enter Password", 
-            type="password", 
-            on_change=password_entered, 
-            key="password"
-        )
-        st.error("❌ Incorrect password")
-        return False
-    else:
-        return True
+# TEMPORARILY COMMENTED OUT - Password protection disabled for external demo
+# def check_password():
+#     """Returns True if the user had the correct password."""
+#     def password_entered():
+#         """Checks whether a password entered by the user is correct."""
+#         if st.session_state["password"] == "SEG2025AI!":
+#             st.session_state["password_correct"] = True
+#             del st.session_state["password"]
+#         else:
+#             st.session_state["password_correct"] = False
+#     if "password_correct" not in st.session_state:
+#         st.title("🔒 AI Sales and Research Intelligence")
+#         st.text_input(
+#             "Enter Password", 
+#             type="password", 
+#             on_change=password_entered, 
+#             key="password"
+#         )
+#         st.caption("Internal access only - Contact IT for credentials")
+#         return False
+#     elif not st.session_state["password_correct"]:
+#         st.title("🔒 AI Sales and Research Intelligence")
+#         st.text_input(
+#             "Enter Password", 
+#             type="password", 
+#             on_change=password_entered, 
+#             key="password"
+#         )
+#         st.error("❌ Incorrect password")
+#         return False
+#     else:
+#         return True
 
-if not check_password():
-    st.stop()
+# if not check_password():
+#     st.stop()
     
 # Page configuration
 st.set_page_config(
-    page_title="SEG AI Research Assistant",
-    page_icon="🎓",
-    layout="wide"
-)
-    
-# Page configuration
-st.set_page_config(
-    page_title="SEG AI Research Assistant",
+    page_title="AI Sales & Research Intelligence",
     page_icon="🎓",
     layout="wide"
 )
@@ -371,7 +365,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Define all display functions (keeping them as-is from your original file)
+# Define all display functions
 def display_school_intelligence(intel):
     """Display school intelligence in Streamlit"""
     
@@ -557,10 +551,10 @@ def display_competitors(intel):
             else:
                 st.write(str(comp))
     else:
-        st.success(" No competitor agencies detected")
+        st.success("✅ No competitor agencies detected")
 
 def display_financial_data(intel):
-    """Display financial data - RAW DATA ONLY, NO CALCULATIONS"""
+    """Display financial data with comparison text"""
     
     if hasattr(intel, 'financial_data') and intel.financial_data:
         financial = intel.financial_data
@@ -569,6 +563,7 @@ def display_financial_data(intel):
             st.warning(f"Could not retrieve financial data: {financial['error']}")
             return
         
+        # Entity information
         if 'entity_found' in financial:
             entity = financial['entity_found']
             
@@ -583,7 +578,21 @@ def display_financial_data(intel):
         
         st.divider()
         
-        # Display RAW extracted data - NO CALCULATIONS
+        # COMPARISON DATA SECTION - NEW!
+        if 'financial' in financial and financial['financial']:
+            fin_data = financial['financial']
+            
+            # Display comparison text prominently if available
+            if 'comparison_text' in fin_data and fin_data['comparison_text']:
+                st.success("📊 **Government Benchmark Comparison**")
+                st.markdown(f"### {fin_data['comparison_text']}")
+                st.caption(f"Source: [FBIT Database]({fin_data.get('source_url', '')})")
+                st.divider()
+            else:
+                st.info("ℹ️ No comparison data available from government database")
+                st.divider()
+        
+        # Display RAW extracted data
         if 'financial' in financial and financial['financial']:
             fin_data = financial['financial']
             
@@ -607,7 +616,7 @@ def display_financial_data(intel):
                     if raw.get('educational_consultancy_costs') is not None:
                         st.metric("Consultancy Costs", f"£{raw['educational_consultancy_costs']:,} per pupil")
                     if raw.get('total_teaching_and_support_costs_per_pupil'):
-                        st.metric("Cost Per Pupil", f"£{raw['total_teaching_and_support_costs_per_pupil']:,.2f}")
+                        st.metric("Total Cost Per Pupil", f"£{raw['total_teaching_and_support_costs_per_pupil']:,.2f}")
                 
                 st.divider()
             
@@ -616,13 +625,13 @@ def display_financial_data(intel):
                 st.caption(f"Data source: [FBIT Government Database]({fin_data['source_url']})")
                 st.caption(f"Extracted: {fin_data.get('extracted_date', 'N/A')}")
         
-        # Key Insights (already clean - no calculations)
+        # Key Insights
         if 'insights' in financial and financial['insights']:
             st.subheader("💡 Key Insights")
             for insight in financial['insights']:
                 st.write(f"• {insight}")
         
-        # Conversation Starters (already clean - no calculations)
+        # Conversation Starters
         if 'conversation_starters' in financial and financial['conversation_starters']:
             st.subheader("💬 Cost-Focused Conversation Starters")
             for i, starter in enumerate(financial['conversation_starters'], 1):
@@ -655,14 +664,14 @@ def display_ofsted_analysis(intel):
         
         priority_order = ofsted_data.get('priority_order', [])
         if priority_order:
-            st.error("OFSTED IMPROVEMENT PRIORITIES")
+            st.error("⚠️ OFSTED IMPROVEMENT PRIORITIES")
             for i, priority in enumerate(priority_order[:5], 1):
                 st.write(f"**{i}. {priority}**")
             st.markdown("---")
         
         main_improvements = ofsted_data.get('main_improvements', [])
         if main_improvements:
-            st.subheader("Key Areas for Improvement")
+            st.subheader("📋 Key Areas for Improvement")
             for improvement in main_improvements:
                 with st.expander(f"**{improvement['area']}**", expanded=True):
                     st.write(improvement['description'])
@@ -671,7 +680,7 @@ def display_ofsted_analysis(intel):
         
         subject_improvements = ofsted_data.get('subject_improvements', {})
         if subject_improvements:
-            st.subheader("Subject-Specific Improvements")
+            st.subheader("📚 Subject-Specific Improvements")
             cols = st.columns(min(3, len(subject_improvements)))
             for idx, (subject, details) in enumerate(subject_improvements.items()):
                 with cols[idx % 3]:
@@ -704,7 +713,7 @@ def display_borough_summary(results):
         st.metric("Avg Quality", f"{avg_quality:.0%}")
 
 # Header
-st.title("Supporting Education Group AI Research Assistant")
+st.title("AI Sales and Research Intelligence")
 st.markdown("**Intelligent school research and contact discovery system**")
 
 # Sidebar
