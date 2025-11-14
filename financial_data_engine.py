@@ -97,7 +97,10 @@ class FinancialDataEngine:
             }
         else:
             logger.error(f"❌ Could not extract URN from URL: {gias_url}")
-            return {'urn': None, 'confidence': 0.0, 'error': 'Could not extract URN from URL'}
+        urn_from_url = re.search(r'/Details/(\d{5,7})', gias_url)
+        if urn_from_url:
+            urn = urn_from_url.group(1)
+            logger.info(f"✅ URN FOUND: {urn}")
             return {
                 'urn': urn,
                 'official_name': school_name,
