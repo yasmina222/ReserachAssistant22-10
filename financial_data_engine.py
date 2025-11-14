@@ -187,13 +187,26 @@ class FinancialDataEngine:
             )
             
             if result and result.success and result.data:
-                # Extract the comparison text
+                logger.info(f"📥 Raw comparison data: {result.data}")
+                
+                # Extract the comparison text - handle actual format returned
                 if isinstance(result.data, dict):
-                    # Look for relevant fields in the response
-                    comparison = result.data.get('comparison_text') or result.data.get('spending_comparison')
+                    # Try different field names (API returns camelCase!)
+                    comparison = (
+                        result.data.get('completeComparisonStatement') or  # Full statement
+                        result.data.get('spendingComparison') or            # Just comparison part
+                        result.data.get('spending_comparison') or           # snake_case fallback
+                        result.data.get('comparison_text')                  # Another fallback
+                    )
+                    
                     if comparison:
+                        logger.info(f"✅ Extracted comparison: {comparison}")
                         return str(comparison)
+                    else:
+                        logger.warning(f"⚠️ Found dict but no comparison field: {result.data.keys()}")
+                        
                 elif isinstance(result.data, str):
+                    logger.info(f"✅ Extracted comparison (string): {result.data}")
                     return result.data
                 
                 logger.warning(f"⚠️ Unexpected comparison data format: {result.data}")
@@ -347,7 +360,7 @@ class FinancialDataEngine:
         return insights
     
     def _generate_cost_conversations(self, financial_data: Dict) -> List[str]:
-        """Generate conversation starters - using actual costs and comparisons"""
+        """Generate conversation starters - PRIORITIZE comparison data first"""
         starters = []
         
         # Get comparison text if available
@@ -356,10 +369,10 @@ class FinancialDataEngine:
         if 'benchmark_data' in financial_data and financial_data['benchmark_data']:
             benchmark = financial_data['benchmark_data']
             
-            # Primary conversation starter with comparison data
+            # PRIORITY 1: Comparison-based conversation (most compelling!)
             total_per_pupil = benchmark.get('total_teaching_and_support_costs_per_pupil')
-            if total_per_pupil and total_per_pupil > 0:
-                if comparison_text and ('higher than' in comparison_text.lower() or 'above' in comparison_text.lower()):
+            if total_per_pupil and total_per_pupil > 0 and comparison_text:
+                if 'higher than' in comparison_text.lower() or 'above' in comparison_text.lower():
                     # School is spending MORE than similar schools
                     starters.append(
                         f"I noticed you're spending £{total_per_pupil:,.0f} per pupil on teaching and support staff, "
@@ -368,16 +381,16 @@ class FinancialDataEngine:
                         f"without compromising teacher and support staff quality. "
                         f"Would you be open to a brief conversation about how we've achieved this?"
                     )
-                else:
-                    # General conversation starter
+                elif 'lower than' in comparison_text.lower() or 'below' in comparison_text.lower():
+                    # School is spending LESS than similar schools (good news!)
                     starters.append(
-                        f"Your teaching and support staff costs are £{total_per_pupil:,.0f} per pupil. "
-                        f"We've worked with schools across the UK to help them manage these costs more effectively, "
-                        f"typically achieving 15-20% reductions without compromising quality. "
-                        f"Would it be helpful to explore how this could work for your school?"
+                        f"Your teaching and support staff costs of £{total_per_pupil:,.0f} per pupil show you're "
+                        f"already managing resources efficiently compared to similar schools. "
+                        f"We work with well-run schools like yours to maintain quality while exploring "
+                        f"opportunities for even greater value. Would it be helpful to discuss this?"
                     )
             
-            # Agency supply costs conversation
+            # PRIORITY 2: Agency supply costs conversation
             agency = benchmark.get('agency_supply_teaching_staff_costs')
             if agency is not None and agency > 0:
                 starters.append(
@@ -388,7 +401,7 @@ class FinancialDataEngine:
                     f"conversation about how we've helped other schools reduce these costs?"
                 )
             
-            # Supply teaching costs conversation
+            # PRIORITY 3: Supply teaching costs conversation
             supply = benchmark.get('supply_teaching_staff_costs')
             if supply is not None and supply > 0:
                 starters.append(
@@ -398,7 +411,7 @@ class FinancialDataEngine:
                     f"administrative burden of managing multiple supply arrangements."
                 )
             
-            # Consultancy costs conversation
+            # PRIORITY 4: Consultancy costs conversation
             consultancy = benchmark.get('educational_consultancy_costs')
             if consultancy is not None and consultancy > 0:
                 starters.append(
