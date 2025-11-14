@@ -80,79 +80,35 @@ class FinancialDataEngine:
             logger.warning(f"❌ No school establishment page found")
             return {'urn': None, 'confidence': 0.0, 'error': 'No establishment page found'}
         
-        # Step 3: Scrape the GIAS page with Firecrawl JSON format
-        logger.info(f"🔥 Scraping GIAS page for URN...")
+        # Step 3: Extract URN directly from URL (most reliable method)
+        logger.info(f"🔍 Extracting URN from URL...")
         
-        headers = {
-            "Authorization": f"Bearer {self.firecrawl_api_key}",
-            "Content-Type": "application/json"
-        }
-        
-        payload = {
-            "url": gias_url,
-            "formats": [{
-                "type": "json",
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "urn": {"type": "string", "description": "The URN number (5-7 digits)"},
-                        "school_name": {"type": "string", "description": "Official school name"},
-                        "address": {"type": "string", "description": "Full school address"},
-                        "trust_name": {"type": "string", "description": "Name of trust if school is in a trust"}
-                    },
-                    "required": ["urn", "school_name"]
-                }
-            }]
-        }
-        
-        try:
-            response = requests.post(self.firecrawl_scrape_url, json=payload, headers=headers, timeout=30)
-            
-            if response.status_code == 200:
-                data = response.json()
-                
-                if data.get('success') and data.get('data', {}).get('json'):
-                    extracted = data['data']['json']
-                    
-                    urn = extracted.get('urn', '').strip()
-                    
-                    # Validate URN (should be 5-7 digits)
-                    if urn and re.match(r'^\d{5,7}$', urn):
-                        result = {
-                            'urn': urn,
-                            'official_name': extracted.get('school_name', school_name),
-                            'address': extracted.get('address', ''),
-                            'trust_name': extracted.get('trust_name'),
-                            'confidence': 0.98,
-                            'url': gias_url
-                        }
-                        logger.info(f"✅ URN FOUND: {urn} for {result['official_name']}")
-                        return result
-                    else:
-                        logger.error(f"❌ Invalid URN format: {urn}")
-                else:
-                    logger.error(f"❌ Firecrawl returned no JSON data")
-            else:
-                logger.error(f"❌ Firecrawl HTTP {response.status_code}: {response.text[:200]}")
-                
-        except Exception as e:
-            logger.error(f"❌ Firecrawl error: {e}")
-        
-        # Fallback: Try to extract URN from URL itself
         urn_from_url = re.search(r'/Details/(\d{5,7})', gias_url)
         if urn_from_url:
             urn = urn_from_url.group(1)
-            logger.info(f"⚠️ Fallback: Extracted URN {urn} from URL")
+            logger.info(f"✅ URN FOUND: {urn}")
             return {
                 'urn': urn,
                 'official_name': school_name,
                 'address': location or '',
                 'trust_name': None,
-                'confidence': 0.85,
+                'confidence': 0.95,
                 'url': gias_url
             }
-        
-        return {'urn': None, 'confidence': 0.0, 'error': 'Could not extract URN'}
+        else:
+            logger.error(f"❌ Could not extract URN from URL: {gias_url}")
+            return {'urn': None, 'confidence': 0.0, 'error': 'Could not extract URN from URL'}
+            return {
+                'urn': urn,
+                'official_name': school_name,
+                'address': location or '',
+                'trust_name': None,
+                'confidence': 0.95,
+                'url': gias_url
+            }
+        else:
+            logger.error(f"❌ Could not extract URN from URL: {gias_url}")
+            return {'urn': None, 'confidence': 0.0, 'error': 'Could not extract URN from URL'}
     
     def get_financial_data(self, urn: str, entity_name: str = None, is_trust: bool = False) -> Dict[str, Any]:
         """
@@ -170,7 +126,14 @@ class FinancialDataEngine:
             'extracted_date': datetime.now().isoformat()
         }
         
-        # STEP 1: Try to get benchmark data (THE IMPORTANT ONE)
+        # STEP 1: Get comparison data from main page (e.g., "higher than 93.3% of similar schools")
+        logger.info("🔥 Extracting comparison data from main page...")
+        comparison_text = self._extract_comparison_data(financial_data['source_url'])
+        if comparison_text:
+            financial_data['comparison_text'] = comparison_text
+            logger.info(f"✅ Comparison data: {comparison_text}")
+        
+        # STEP 2: Get detailed benchmark data from comparison page
         logger.info("🔥 Attempting to scrape comparison page...")
         benchmark_data = self._scrape_comparison_page_v2(financial_data['comparison_url'])
         
@@ -202,6 +165,40 @@ class FinancialDataEngine:
             logger.info(f"  💼 Raw financial data stored (no calculations)")
         
         return financial_data
+    
+    def _extract_comparison_data(self, url: str) -> Optional[str]:
+        """
+        Extract comparison text from main FBIT page
+        e.g., "Spending is higher than 93.3% of similar schools"
+        """
+        
+        try:
+            result = self.firecrawl_app.extract(
+                urls=[url],
+                prompt=(
+                    "Extract the comparison information for 'Teaching and Teaching support staff'. "
+                    "Look for text like 'Spends £X per pupil' and 'Spending is higher/lower than X% of similar schools'. "
+                    "Also identify if it's marked as 'High priority', 'Medium priority', or 'Low priority'. "
+                    "Return the complete comparison statement."
+                )
+            )
+            
+            if result and result.success and result.data:
+                # Extract the comparison text
+                if isinstance(result.data, dict):
+                    # Look for relevant fields in the response
+                    comparison = result.data.get('comparison_text') or result.data.get('spending_comparison')
+                    if comparison:
+                        return str(comparison)
+                elif isinstance(result.data, str):
+                    return result.data
+                
+                logger.warning(f"⚠️ Unexpected comparison data format: {result.data}")
+            
+        except Exception as e:
+            logger.error(f"❌ Error extracting comparison data: {e}")
+        
+        return None
     
     def _scrape_comparison_page_v2(self, url: str) -> Dict[str, Any]:
         """
@@ -347,36 +344,62 @@ class FinancialDataEngine:
         return insights
     
     def _generate_cost_conversations(self, financial_data: Dict) -> List[str]:
-        """Generate conversation starters - using actual costs, NO calculations"""
+        """Generate conversation starters - using actual costs and comparisons"""
         starters = []
+        
+        # Get comparison text if available
+        comparison_text = financial_data.get('comparison_text', '')
         
         if 'benchmark_data' in financial_data and financial_data['benchmark_data']:
             benchmark = financial_data['benchmark_data']
             
-            # Reference actual costs directly
+            # Primary conversation starter with comparison data
+            total_per_pupil = benchmark.get('total_teaching_and_support_costs_per_pupil')
+            if total_per_pupil and total_per_pupil > 0:
+                if comparison_text and ('higher than' in comparison_text.lower() or 'above' in comparison_text.lower()):
+                    # School is spending MORE than similar schools
+                    starters.append(
+                        f"I noticed you're spending £{total_per_pupil:,.0f} per pupil on teaching and support staff, "
+                        f"which our analysis suggests may indicate opportunities for better resource management. "
+                        f"We've helped other schools in similar positions reduce these costs by 15-20% "
+                        f"without compromising teacher and support staff quality. "
+                        f"Would you be open to a brief conversation about how we've achieved this?"
+                    )
+                else:
+                    # General conversation starter
+                    starters.append(
+                        f"Your teaching and support staff costs are £{total_per_pupil:,.0f} per pupil. "
+                        f"We've worked with schools across the UK to help them manage these costs more effectively, "
+                        f"typically achieving 15-20% reductions without compromising quality. "
+                        f"Would it be helpful to explore how this could work for your school?"
+                    )
+            
+            # Agency supply costs conversation
             agency = benchmark.get('agency_supply_teaching_staff_costs')
             if agency is not None and agency > 0:
                 starters.append(
                     f"I noticed from the government's financial benchmarking data that you're spending "
-                    f"£{agency:,} annually on agency supply staff. Many schools in similar situations have "
-                    f"switched to Protocol Education and achieved significant cost savings "
+                    f"£{agency:,} per pupil annually on agency supply staff. Many schools in similar situations have "
+                    f"switched to us and achieved significant cost savings "
                     f"while actually improving teacher quality and consistency. Would you be open to a brief "
                     f"conversation about how we've helped other schools reduce these costs?"
                 )
             
+            # Supply teaching costs conversation
             supply = benchmark.get('supply_teaching_staff_costs')
             if supply is not None and supply > 0:
                 starters.append(
-                    f"Your supply teaching costs of £{supply:,} annually suggest regular staffing challenges. "
-                    f"Protocol Education specializes in providing consistent, high-quality supply staff "
+                    f"Your supply teaching costs of £{supply:,} per pupil annually suggest regular staffing challenges. "
+                    f"We specialize in providing consistent, high-quality supply staff "
                     f"at competitive rates. Many schools find our approach reduces both costs and the "
                     f"administrative burden of managing multiple supply arrangements."
                 )
             
+            # Consultancy costs conversation
             consultancy = benchmark.get('educational_consultancy_costs')
             if consultancy is not None and consultancy > 0:
                 starters.append(
-                    f"I see you're investing £{consultancy:,} in educational consultancy. "
+                    f"I see you're investing £{consultancy:,} per pupil in educational consultancy. "
                     f"We've helped many schools by providing stable, high-quality staffing during periods of change, "
                     f"which allows leadership to focus on strategic improvements rather than daily staffing challenges."
                 )
@@ -384,15 +407,15 @@ class FinancialDataEngine:
         balance = financial_data.get('in_year_balance')
         if balance is not None and balance < -30000:
             starters.append(
-                f"I understand your school is managing a deficit of £{abs(balance):,}. Protocol Education "
-                f"has specific programs designed to help schools reduce recruitment and supply costs as part "
+                f"I understand your school is managing a deficit of £{abs(balance):,}. "
+                f"We have specific programs designed to help schools reduce recruitment and supply costs as part "
                 f"of financial recovery plans."
             )
         
         # Fallback if no specific data
         if not starters:
             starters.append(
-                "Protocol Education provides high-quality teaching staff at competitive rates with a "
+                "We provide high-quality teaching staff at competitive rates with a "
                 "quality guarantee. We'd be happy to provide a no-obligation comparison against your "
                 "current arrangements to show potential cost savings and service improvements."
             )
