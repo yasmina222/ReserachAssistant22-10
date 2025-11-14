@@ -203,13 +203,16 @@ class FinancialDataEngine:
                         logger.info(f"✅ Extracted comparison: {comparison}")
                         return str(comparison)
                     else:
+                        # ONLY log warning if we actually couldn't find it
                         logger.warning(f"⚠️ Found dict but no comparison field: {result.data.keys()}")
+                        return None
                         
                 elif isinstance(result.data, str):
                     logger.info(f"✅ Extracted comparison (string): {result.data}")
                     return result.data
-                
-                logger.warning(f"⚠️ Unexpected comparison data format: {result.data}")
+                else:
+                    logger.warning(f"⚠️ Unexpected type: {type(result.data)}")
+                    return None
             
         except Exception as e:
             logger.error(f"❌ Error extracting comparison data: {e}")
