@@ -172,7 +172,6 @@ class FinancialDataEngine:
     def _extract_comparison_data(self, url: str) -> Optional[str]:
         """
         Extract comparison text from main FBIT page
-        e.g., "Spending is higher than 93.3% of similar schools"
         """
         
         try:
@@ -186,36 +185,33 @@ class FinancialDataEngine:
                 )
             )
             
+            logger.info(f"📥 Full Firecrawl result object: {result}")
+            logger.info(f"📥 result.data type: {type(result.data)}")
+            logger.info(f"📥 result.data content: {result.data}")
+            
             if result and result.success and result.data:
-                logger.info(f"📥 Raw comparison data: {result.data}")
+                # result.data IS the dict directly (per Firecrawl docs)
+                data_dict = result.data
                 
-                # Extract the comparison text - handle actual format returned
-                if isinstance(result.data, dict):
-                    # Try different field names (API returns camelCase!)
-                    comparison = (
-                        result.data.get('completeComparisonStatement') or  # Full statement
-                        result.data.get('spendingComparison') or            # Just comparison part
-                        result.data.get('spending_comparison') or           # snake_case fallback
-                        result.data.get('comparison_text')                  # Another fallback
-                    )
-                    
-                    if comparison:
-                        logger.info(f"✅ Extracted comparison: {comparison}")
-                        return str(comparison)
-                    else:
-                        # ONLY log warning if we actually couldn't find it
-                        logger.warning(f"⚠️ Found dict but no comparison field: {result.data.keys()}")
-                        return None
-                        
-                elif isinstance(result.data, str):
-                    logger.info(f"✅ Extracted comparison (string): {result.data}")
-                    return result.data
+                # Extract comparison using the actual field names returned
+                comparison = (
+                    data_dict.get('completeComparisonStatement') or
+                    data_dict.get('spendingComparison') or
+                    data_dict.get('spending_comparison') or
+                    data_dict.get('comparison_text') or
+                    data_dict.get('spendingPerPupil', '')  # Fallback to just the spending amount
+                )
+                
+                if comparison:
+                    logger.info(f"✅ COMPARISON EXTRACTED: {comparison}")
+                    return str(comparison)
                 else:
-                    logger.warning(f"⚠️ Unexpected type: {type(result.data)}")
-                    return None
+                    logger.error(f"❌ No comparison field found in: {list(data_dict.keys())}")
+            else:
+                logger.error(f"❌ Firecrawl failed: success={result.success if result else None}")
             
         except Exception as e:
-            logger.error(f"❌ Error extracting comparison data: {e}")
+            logger.error(f"❌ Error extracting comparison data: {e}", exc_info=True)
         
         return None
     
